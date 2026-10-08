@@ -76,8 +76,8 @@ each).
 
 ## Open questions
 
-1. Is a reference server in scope for this repo, or should it live elsewhere (or be left
-   to implementers)? Assumed: in this repo, under `server/`.
+1. ~~Is a reference server in scope for this repo?~~ Settled: the user answered yes, so it
+   lives in this repo, under `server/`.
 2. Which language for the server? Assumed: TypeScript, matching the MCP TypeScript SDK.
 3. What durable store should the server use (SQLite, Postgres)? Assumed: SQLite, swappable.
 4. When does the spec leave "draft", and may the SDKs be published under the `@codefrak`
