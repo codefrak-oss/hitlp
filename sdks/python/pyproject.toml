@@ -13,6 +13,7 @@ dependencies = ["jsonschema[format-nongpl]>=4.18"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+mcp = ["fastmcp[tasks]>=4.0.11,<5"]
 
 [project.urls]
 Specification = "https://github.com/codefrak-oss/hitlp/blob/main/spec/hitlp.md"
