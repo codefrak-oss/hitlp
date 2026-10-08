@@ -19,10 +19,8 @@ sequenceDiagram
     Note over A: Record taskId + idempotencyKey (R3)
 
     A->>S: tasks/get {taskId}
-    S-->>A: status: input_required (URL-mode elicitation)
-    Note over A,H: Client opens the URL, it never submits the decision itself (§7.6)
-    A->>S: tasks/update (acknowledges elicitation)
-    Note over S: status: working
+    S-->>A: status: input_required, _meta {io.hitlp/decisionUrl}, statusMessage (URL)
+    Note over A,H: Client hands the URL to the human, never submits the decision itself (§7.6)<br/>Task stays input_required until decided, TTL or cancel
 
     H->>S: Authenticate on server's page (SHOULD include MFA)
     S->>H: Show action + payload exactly as received (+ payloadDigest)
@@ -40,12 +38,10 @@ sequenceDiagram
         Note over S: Decision record {outcome: cancelled}<br/>status: cancelled
     end
 
-    loop Until terminal (§7.4)
-        A->>S: tasks/get or subscriptions/listen
-        S-->>A: terminal status + decision record
-    end
+    A->>S: tasks/get {taskId} (§7.4)
+    S-->>A: terminal status + inlined decision record
 
-    Note over A,S: Refused (R7): an approval sent via form-mode elicitation<br/>or as tasks/update content from the client
+    Note over A,S: Refused (R7): an approval sent via form-mode elicitation<br/>or as decision content supplied by the client
 ```
 
 The agent must treat any terminal state, including a timeout, as the answer and must not

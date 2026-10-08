@@ -7,8 +7,10 @@ The task statuses shared by both HITLP sub-protocols, [Ask](ask.md) and
 ```mermaid
 stateDiagram-v2
     [*] --> working: human.ask / human.approve returns Task handle
-    working --> input_required: server needs client action (URL-mode elicitation)
-    input_required --> working: tasks/update or re-issued call
+    working --> input_required: URL-mode decision pending (io.hitlp/decisionUrl)
+    input_required --> completed: human decides / defaultOnTimeout reject
+    input_required --> failed: error / defaultOnTimeout fail
+    input_required --> cancelled: tasks/cancel / defaultOnTimeout cancel
     working --> completed: decision record written (incl. defaultOnTimeout reject)
     working --> failed: error / defaultOnTimeout fail
     working --> cancelled: tasks/cancel / defaultOnTimeout cancel
