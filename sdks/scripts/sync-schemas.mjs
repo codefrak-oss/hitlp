@@ -17,6 +17,8 @@ const targets = [
   { from: "spec/examples", to: "sdks/typescript/test/examples" },
   { from: "spec/schemas", to: "sdks/python/src/hitlp/schemas" },
   { from: "spec/examples", to: "sdks/python/tests/examples" },
+  { from: "spec/schemas", to: "sdks/java/src/main/resources/hitlp/schemas" },
+  { from: "spec/examples", to: "sdks/java/src/test/resources/hitlp/examples" },
 ];
 
 let drift = 0;
