@@ -69,8 +69,11 @@ More diagrams, including the Ask message-flow sequence diagram, are in
 
 ## Example
 
+"ask" is one of several flows. Example:
+
 ```
 [agent] Asking the human for their name (human.ask) ...
+
 [wire] -> human.ask arguments
        {
          "idempotencyKey": "fd6dfaa4-e7ae-48e4-9520-e3f06c1db6ad",
@@ -81,9 +84,12 @@ More diagrams, including the Ask message-flow sequence diagram, are in
          "question": "What is your name?",
          "responseSchema": { "type": "string", "minLength": 1 }
        }
+
 [wire] <- task handle
        { "taskId": "task-1", "status": "working", "pollInterval": 10 }
+
 [human] What is your name? Ada
+
 [wire] <- tasks/get task-1 (terminal)
        {
          "taskId": "task-1",
@@ -100,6 +106,7 @@ More diagrams, including the Ask message-flow sequence diagram, are in
            "decidedAt": "2026-10-08T15:03:11.96774Z"
          }
        }
+
 [agent] Hello, Ada!
 ```
 
