@@ -1,6 +1,7 @@
 // The hosted decision page for URL-mode Approve (spec 7.6, rule R7): a human
 // logs in, sees the action and payload exactly as the agent sent them, and
-// approves or rejects once. The agent never reaches this surface: its tokens
+// approves or rejects once. The same page answers an Ask: the human sees the
+// question as the agent sent it and submits one answer. The agent never reaches this surface: its tokens
 // are refused here, and the task URL alone grants nothing (R5).
 //
 // Security choices the reference server makes (deployments SHOULD add MFA for
@@ -15,7 +16,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { isTerminal, type DecisionRecord } from "@codefrak/hitlp";
+import { isTerminal, type AskOption, type DecisionRecord } from "@codefrak/hitlp";
 import { assertDisjointCredentials, type Authenticator, type HumanAuthenticator, type HumanProfile } from "./auth";
 import { requestHash } from "./idempotency";
 import type { HitlpServer } from "./server";
@@ -182,7 +183,7 @@ export class DecisionPage {
   /** The task if this human may decide it now, or writes the refusal and returns undefined. */
   private decidable(res: ServerResponse, taskId: string, human: HumanProfile): StoredTask | undefined {
     const task = this.options.server.getTask(taskId);
-    if (!task || task.primitive !== "approve") {
+    if (!task) {
       page(res, 404, "Not found", "");
       return undefined;
     }
@@ -201,6 +202,7 @@ export class DecisionPage {
   private show(res: ServerResponse, taskId: string, sessionId: string, human: HumanProfile): void {
     const task = this.decidable(res, taskId, human);
     if (!task) return;
+    if (task.primitive === "ask") return this.showAsk(res, task, sessionId, human);
     const r = task.request;
     const context = r.context as { summary?: string } | undefined;
     page(
@@ -226,6 +228,7 @@ export class DecisionPage {
     if (!same(f.get("csrf") ?? "", this.csrf(sessionId, taskId))) return page(res, 403, "Forbidden", "<p>Invalid form token.</p>");
     const task = this.decidable(res, taskId, human);
     if (!task) return;
+    if (task.primitive === "ask") return this.submitAsk(res, f, task, human);
     const digest = displayedDigest(task);
     if (f.get("digest") !== digest) return page(res, 409, "Payload changed", "<p>Reload the page and decide again.</p>");
     const decision = f.get("decision");
@@ -248,5 +251,66 @@ export class DecisionPage {
       throw e;
     }
     page(res, 200, "Decision recorded", `<p>${escapeHtml(record.outcome)} by ${escapeHtml(human.id)}.</p>`);
+  }
+
+  private showAsk(res: ServerResponse, task: StoredTask, sessionId: string, human: HumanProfile): void {
+    const r = task.request;
+    const context = r.context as { summary?: string } | undefined;
+    const options = (r.options ?? []) as AskOption[];
+    const input =
+      options.length > 0
+        ? options.map((o, i) => `<label><input type="radio" name="option" value="${i}"> ${escapeHtml(o.label)}</label><br>`).join("")
+        : `<label>Answer <input name="answer"></label> `;
+    page(
+      res,
+      200,
+      "Question",
+      `<p>Signed in as ${escapeHtml(human.id)}.</p>` +
+        `<h2>Question</h2><p id="question">${escapeHtml(String(r.question))}</p>` +
+        (context?.summary ? `<h2>Context</h2><p>${escapeHtml(context.summary)}</p>` : "") +
+        `<p>Deadline: ${escapeHtml(new Date(task.finalDeadlineAt ?? task.deadlineAt).toISOString())}</p>` +
+        `<form method="post" action="/decide/${escapeHtml(task.id)}">` +
+        `<input type="hidden" name="csrf" value="${this.csrf(sessionId, task.id)}">` +
+        `${input}<button>Answer</button></form>`,
+    );
+  }
+
+  /** Records the human's answer: one of `options` when the Ask has them, else the text (JSON when the schema is not a string). */
+  private submitAsk(res: ServerResponse, f: URLSearchParams, task: StoredTask, human: HumanProfile): void {
+    const options = (task.request.options ?? []) as AskOption[];
+    let answer: unknown;
+    if (options.length > 0) {
+      const option = options[Number(f.get("option") ?? "")];
+      if (!/^\d+$/.test(f.get("option") ?? "") || !option) return page(res, 400, "Bad request", "<p>Choose one of the options.</p>");
+      answer = option.value;
+    } else {
+      const text = f.get("answer") ?? "";
+      if (text === "") return page(res, 400, "Bad request", "<p>Enter an answer.</p>");
+      const schema = task.request.responseSchema as { type?: unknown } | boolean | undefined;
+      answer = text;
+      if (typeof schema === "object" && schema.type !== undefined && schema.type !== "string") {
+        try {
+          answer = JSON.parse(text);
+        } catch {
+          return page(res, 400, "Bad request", "<p>This question takes a JSON answer.</p>");
+        }
+      }
+    }
+    const record: Omit<DecisionRecord, "requestId"> = {
+      idempotencyKey: task.idempotencyKey,
+      primitive: "ask",
+      outcome: "answered",
+      answer,
+      decidedBy: { type: "human", id: human.id, roles: [...human.roles] },
+      decidedAt: new Date(this.options.server.now()).toISOString(),
+      channel: "url",
+    };
+    try {
+      this.options.server.decide(task.id, record);
+    } catch (e) {
+      if (e instanceof TerminalTaskError) return page(res, 409, "Already decided", `<p>This request is ${escapeHtml(e.task.status)}.</p>`);
+      throw e;
+    }
+    page(res, 200, "Answer recorded", `<p>Answered by ${escapeHtml(human.id)}.</p>`);
   }
 }

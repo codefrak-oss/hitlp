@@ -31,5 +31,27 @@ A run looks like this:
 [agent] Approved by terminal-human. Deploying "Hello, Ada!" ... done.
 ```
 
+## Against a real server
+
+Set `HITLP_DEMO_SERVER` to the MCP URL of [server/](../../server/README.md) and the demo talks to it through the SDK's `McpTaskTransport` instead of the terminal human; `HITLP_DEMO_TOKEN` is its bearer token (default `local`). The human answers on the server's decision page. In one terminal, from the repo root:
+
+```sh
+cd server && npm ci && npm run build
+echo '[{"credential":"pw-demo","id":"h-demo","roles":[],"capabilities":[]}]' > approvers.json
+node dist/src/main.js --db demo.db --http-port 3000 --approvers approvers.json
+```
+
+In another:
+
+```sh
+cd demos/python
+pip install -e '../../sdks/python[mcp]'
+HITLP_DEMO_SERVER=http://127.0.0.1:3000/mcp python hello.py
+```
+
+The demo prints `Task <id> waits for a human` for each request, with the decision page URL for the Approve; the server logs the page URL for the Ask (`hitlp: answer at ...`). Open it, sign in with `pw-demo`, and answer.
+
+With node, `server/` built and `hitlp[mcp]` installed, `pytest test_hello.py` also runs the demo against it and plays the human on the page.
+
 - [hello.py](hello.py): the agent.
 - [terminal_human.py](terminal_human.py): the demo-only transport that plays the human at the terminal.
