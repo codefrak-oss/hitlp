@@ -1,0 +1,29 @@
+{
+  "name": "@codefrak/hitlp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HITLP reference server: human.ask and human.approve as MCP task tools over a durable SQLite task store",
+  "license": "MIT",
+  "main": "dist/src/index.js",
+  "bin": {
+    "hitlp-server": "dist/src/main.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "better-sqlite3": "^12.11.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@codefrak/hitlp": "file:../sdks/typescript",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.5",
+    "typescript": "~5.9.0"
+  }
+}
