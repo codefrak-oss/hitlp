@@ -77,6 +77,11 @@ npm run build
 node dist/src/main.js --db hitlp.db --tokens tokens.json
 ```
 
+With `--http-port <n>` (and `--http-host`, default `127.0.0.1`) it serves MCP
+Streamable HTTP at `/mcp` instead of stdio; each request's
+`Authorization: Bearer` token names its client, and a request without one is
+refused. The conformance suite (`../conformance`) runs against that URL.
+
 With `--approvers approvers.json` the decision page listens on `--page-port`
 (8080) on `--page-host` (127.0.0.1); `--page-url` is its public base URL, and an
 `https:` one marks the cookie `Secure`. Serve it behind TLS.

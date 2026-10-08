@@ -1,0 +1,36 @@
+name: conformance
+
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", "conformance/**", "sdks/typescript/**", "spec/**", ".github/workflows/conformance.yml"]
+  pull_request:
+    paths: ["server/**", "conformance/**", "sdks/typescript/**", "spec/**", ".github/workflows/conformance.yml"]
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the TypeScript SDK
+        working-directory: sdks/typescript
+        run: npm ci && npm run build
+      - name: Build the server
+        working-directory: server
+        run: npm ci && npm run build
+      - name: Build the conformance suite
+        working-directory: conformance
+        run: npm ci && npm run build
+      - name: Run the suite against server/
+        shell: bash
+        run: conformance/run-against-server.sh 2>&1 | tee conformance/conformance.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-log
+          path: |
+            conformance/conformance.log
+            conformance/server.log
