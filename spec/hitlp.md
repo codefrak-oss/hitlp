@@ -192,7 +192,7 @@ decider, never a human.
 
 A HITLP server is an MCP server. It MUST support the stateless core of MCP 2026-07-28
 and the Tasks extension `io.modelcontextprotocol/tasks`, and SHOULD support
-`subscriptions/listen` and URL-mode elicitation.
+task status notifications and URL-mode elicitation.
 
 ### 7.1 Tools
 
@@ -224,7 +224,8 @@ Diagram: [diagrams/task-lifecycle.md](../diagrams/task-lifecycle.md)
   <rect x="460" y="95" width="120" height="40" rx="20" fill="#fdeeee" stroke="#b03030"/><text x="520" y="120" text-anchor="middle">failed</text>
   <rect x="460" y="170" width="120" height="40" rx="20" fill="#f0f0f0" stroke="#666"/><text x="520" y="195" text-anchor="middle">cancelled</text>
   <line x1="130" y1="105" x2="220" y2="50" stroke="#333" marker-end="url(#b)"/>
-  <line x1="250" y1="60" x2="125" y2="100" stroke="#333" stroke-dasharray="4" marker-end="url(#b)"/>
+  <line x1="330" y1="60" x2="458" y2="110" stroke="#333" marker-end="url(#b)"/>
+  <line x1="300" y1="60" x2="458" y2="185" stroke="#333" marker-end="url(#b)"/>
   <line x1="360" y1="40" x2="458" y2="40" stroke="#333" marker-end="url(#b)"/>
   <text x="410" y="33" text-anchor="middle" font-size="11">decision</text>
   <line x1="130" y1="110" x2="458" y2="45" stroke="#333" marker-end="url(#b)"/>
@@ -236,10 +237,13 @@ Diagram: [diagrams/task-lifecycle.md](../diagrams/task-lifecycle.md)
 
 - `working`: the request is persisted and routed; humans are being reached. Reminders
   and escalations happen inside this state.
-- `input_required`: the server needs the client to act, e.g. to open a URL-mode
-  elicitation (7.6) or answer a multi-round-trip `inputResponses` request. The client
-  supplies it with `tasks/update` or by re-issuing the call, after which the task
-  returns to `working`.
+- `input_required`: a URL-mode decision (7.6) is waiting for the human. The task
+  carries the decision URL in its `_meta` under the key `io.hitlp/decisionUrl` and in
+  its `statusMessage`. It stays `input_required` until the human decides on the
+  server-hosted page, the TTL expires (7.5) or the client cancels, and then moves
+  straight to `completed`, `failed` or `cancelled`. The client sends no
+  acknowledgement (there is no `tasks/update` step in this binding) and the task does
+  not return to `working`.
 - `completed`: a decision record exists, including timeout outcomes from `reject`.
 - `failed`: the request could not be served, or the default action was `fail`.
 - `cancelled`: the client cancelled, or the default action was `cancel`.
@@ -248,12 +252,13 @@ Diagram: [diagrams/task-lifecycle.md](../diagrams/task-lifecycle.md)
 status again. A cancellation or failure SHOULD still produce a decision record
 (outcome `cancelled` / `timed_out`) for audit.
 
-### 7.4 Polling and subscription
+### 7.4 Polling and notification
 
 The client reads status with `tasks/get`, no more often than the `pollInterval` the
-server returned. A client MAY instead open `subscriptions/listen` to receive task
-change notifications on one stream; it MUST still be able to fall back to polling,
-since a subscription is a convenience and not a delivery guarantee. The client cancels
+server returned. Once the task is terminal, `tasks/get` returns its result (the
+decision record) inline; there is no separate result method. Where the server
+supports it, a client MAY instead receive a task status notification; it MUST still be able to fall back to polling,
+since a notification is a convenience and not a delivery guarantee. The client cancels
 with `tasks/cancel`; the server MUST then stop notifying humans and withdraw open
 prompts where the channel permits.
 
@@ -271,9 +276,12 @@ that accepts everything; it is therefore not a human gate. For `human.approve`, 
 any `human.ask` whose answer authorizes something, the server MUST gather the decision
 through URL-mode elicitation or an out-of-band channel: the human decides on a page
 the server hosts, behind the server's own authentication (SHOULD include MFA for
-Approve). The client learns the outcome only through the task (poll or subscription),
-never by submitting it itself. A server MUST NOT accept an Approve decision through
-form-mode elicitation or through `tasks/update` content supplied by the client.
+Approve). The server delivers the decision URL on the task: the task moves to `input_required`
+and carries the URL in `_meta` under `io.hitlp/decisionUrl` and in `statusMessage`
+(7.3), and waits there until the decision or the TTL. The client learns the outcome
+only through the task (`tasks/get`, or a task status notification), never by
+submitting it itself. A server MUST NOT accept an Approve decision through form-mode
+elicitation or through any decision content supplied by the client.
 
 ## 8. Normative async and security rules
 
@@ -300,7 +308,7 @@ error. Clients MUST reuse the key on every retry of the same logical request and
 use a fresh key for a new one.
 
 **R5. Re-authorize on every poll.** A task handle is an identifier, not a permission.
-On every `tasks/get`, `tasks/update`, `tasks/cancel` and subscription, the server MUST
+On every `tasks/get`, `tasks/list`, `tasks/cancel` and task status notification, the server MUST
 authenticate the caller and check that it may see or act on that task. Knowing a task
 id MUST NOT grant access to its result.
 

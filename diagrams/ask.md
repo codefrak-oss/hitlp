@@ -27,9 +27,8 @@ sequenceDiagram
         alt Polling
             A->>S: tasks/get {taskId}
             S-->>A: status: working
-        else Subscription
-            A->>S: subscriptions/listen
-            S--)A: task change notifications
+        else Notification (where supported)
+            S--)A: task status notification
         end
     end
 
