@@ -105,6 +105,8 @@ vendor prefix.
 
 ### 4.1 Ask
 
+Diagram: [diagrams/ask.md](../diagrams/ask.md)
+
 Ask poses a question whose answer the server validates. The body has:
 
 - `question` (string, REQUIRED): the question as shown to the human.
@@ -119,6 +121,8 @@ The server MUST validate the human's answer against `responseSchema` before comp
 the task and MUST NOT complete it with an invalid answer.
 
 ### 4.2 Approve
+
+Diagram: [diagrams/approve.md](../diagrams/approve.md)
 
 Approve asks a human to authorize an action after inspecting what it will do. Policy,
 authentication and audit treat it more strictly than Ask. The body has:
@@ -209,6 +213,8 @@ a human. The handle carries the task id, `status`, `ttl` and `pollInterval`. The
 MUST persist the request durably before returning the handle.
 
 ### 7.3 Statuses and lifecycle
+
+Diagram: [diagrams/task-lifecycle.md](../diagrams/task-lifecycle.md)
 
 <svg xmlns="http://www.w3.org/2000/svg" width="700" height="230" viewBox="0 0 700 230" font-family="sans-serif" font-size="13">
   <defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#333"/></marker></defs>
