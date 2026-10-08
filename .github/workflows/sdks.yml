@@ -19,7 +19,7 @@ jobs:
         run: node sdks/scripts/sync-schemas.mjs --check
       - name: The old protocol name does not appear
         run: |
-          if git grep -n -i -w hcp; then
+          if git grep -n -i -w -e "h[c]p"; then
             echo "The protocol is called HITLP; remove the old name." >&2
             exit 1
           fi
