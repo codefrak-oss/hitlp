@@ -1,5 +1,5 @@
 # Next steps for HITLP after spec, diagrams, SDKs and demos
-Status: accepted
+Status: built
 Decision log:
 - 2026-10-08 accepted (#10); build filed as #20
 - 2026-10-08 built in #21 (part 1 of 6)
@@ -7,6 +7,7 @@ Decision log:
 - 2026-10-08 built in #27 (part 3 of 6)
 - 2026-10-08 built in #30 (part 4 of 6)
 - 2026-10-08 built in #37 (part 5 of 6)
+- 2026-10-08 built in #40
 Ticket: #10
 
 ## The question

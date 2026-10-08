@@ -17,4 +17,6 @@ Each demo plays the same exchange, using both v1 sub-protocols of the [specifica
 
 The agent's side is all SDK: request building and validation, the client, polling, checkpoints and decision interpretation. Each demo has one small demo-local piece, a *terminal human* `TaskTransport`, which plays the HITLP server's human side by prompting at the terminal and returning a decision record. It keeps tasks in memory, so it is not a conforming HITLP server (rule R1); swap it for a transport onto a real HITLP server and the agent code stays the same.
 
+The TypeScript and Python demos also run against the reference server, [server/](../server/README.md): set `HITLP_DEMO_SERVER` to its MCP URL (and `HITLP_DEMO_TOKEN` to a bearer token, default `local`), and a human answers on its decision page. See each demo's README.
+
 Set `HITLP_DEMO_ANSWERS` (comma-separated replies, e.g. `Ada,y`) to run a demo without typing; its smoke tests use this.

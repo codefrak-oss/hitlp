@@ -6,7 +6,7 @@
 // MCP Streamable HTTP at /mcp, each request's Authorization bearer token naming
 // its client (R5). The tokens file maps bearer tokens to client ids;
 // HITLP_TOKEN picks the stdio client's token. With --approvers, the decision page
-// for URL-mode Approve (spec 7.6) listens on --page-port; --page-url is its public
+// for URL-mode Approve (spec 7.6), which also answers Asks, listens on --page-port; --page-url is its public
 // base URL. The approvers file is a list of {credential, id, roles, capabilities}.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -50,7 +50,11 @@ const server = new HitlpServer({
   caps: { approve: hours(values["approve-cap-hours"]), ask: hours(values["ask-cap-hours"]) },
   allowBlanketScope: values["allow-blanket-scope"],
   decisionUrl: humans && ((id) => `${pageUrl}/decide/${id}`),
-  notify: (t) => console.error(`hitlp: new ${t.primitive} task ${t.id} from ${t.clientId}${t.statusMessage ? `: ${t.statusMessage}` : ""}`),
+  notify: (t) => {
+    console.error(`hitlp: new ${t.primitive} task ${t.id} from ${t.clientId}${t.statusMessage ? `: ${t.statusMessage}` : ""}`);
+    // An Ask carries no decision URL meta; the page still answers it, so log where.
+    if (humans && t.primitive === "ask") console.error(`hitlp: answer at ${pageUrl}/decide/${t.id}`);
+  },
 });
 if (humans) {
   const page = new DecisionPage({ server, humans, agents: auth, secureCookie: pageUrl.startsWith("https:") });

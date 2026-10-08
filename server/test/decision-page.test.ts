@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildApprove, isApproved } from "@codefrak/hitlp";
+import { buildApprove, buildAsk, isApproved } from "@codefrak/hitlp";
 import { z } from "zod";
 import { DECISION_URL_META, DecisionPage, StaticApproverAuthenticator, StaticTokenAuthenticator } from "../src";
 import { startServer, T0, TOKENS } from "./support/harness";
@@ -145,4 +145,51 @@ test("R7: a revoked approver's session stops working; an expired task cannot be 
     assert.equal(t.status, "completed");
     assert.equal(t.result?.outcome, "rejected");
     assert.equal(t.result?.decidedBy.type, "policy");
+  }));
+
+async function withAsk(options: { label: string; value: unknown }[] | undefined, fn: (ctx: Awaited<ReturnType<typeof setup>> & { askId: string }) => Promise<void>): Promise<void> {
+  return withPage(async (ctx) => {
+    const ask = buildAsk({
+      deadline,
+      question: "Name <b>?</b>",
+      defaultOnTimeout: "cancel",
+      responseSchema: options ? { type: "integer" } : { type: "string", minLength: 1 },
+      ...(options ? { options } : {}),
+      requires: { roles: ["approver.production-deploy"] },
+    });
+    const t = await ctx.agent.hitlp.ask(ask);
+    await fn({ ...ctx, askId: t.taskId, url: `${ctx.base}/decide/${t.taskId}` });
+  });
+}
+
+test("Ask on the page: the human answers once; the agent reads the record", () =>
+  withAsk(undefined, async ({ url, base, agent, askId }) => {
+    assert.equal((await fetch(url)).status, 401);
+    assert.equal((await fetch(url, { headers: { authorization: "Bearer token-a" } })).status, 401);
+    const cookie = await login(base, "pw-alice");
+    const html = await (await fetch(url, { headers: { cookie } })).text();
+    assert.match(html, /Name &#60;b&#62;\?&#60;\/b&#62;/);
+    const csrf = field(html, "csrf");
+    assert.equal((await submit(url, cookie, { answer: "Ada" })).status, 403);
+    assert.equal((await submit(url, cookie, { csrf, answer: "Ada" })).status, 200);
+    const done = await agent.hitlp.get(askId);
+    assert.equal(done.status, "completed");
+    assert.equal(done.result?.outcome, "answered");
+    assert.equal(done.result?.answer, "Ada");
+    assert.equal(done.result?.channel, "url");
+    assert.deepEqual(done.result?.decidedBy, { type: "human", id: "h-alice", roles: ["approver.production-deploy"] });
+    assert.equal((await submit(url, cookie, { csrf, answer: "Bob" })).status, 409);
+    assert.equal((await agent.hitlp.get(askId)).result?.answer, "Ada");
+  }));
+
+test("Ask on the page: requires is enforced and an answer must be one of the options", () =>
+  withAsk([{ label: "One", value: 1 }, { label: "Two", value: 2 }], async ({ url, base, agent, askId }) => {
+    const bob = await login(base, "pw-bob");
+    assert.equal((await fetch(url, { headers: { cookie: bob } })).status, 403);
+    const cookie = await login(base, "pw-alice");
+    const csrf = field(await (await fetch(url, { headers: { cookie } })).text(), "csrf");
+    assert.equal((await submit(url, cookie, { csrf, option: "5" })).status, 400);
+    assert.equal((await submit(url, cookie, { csrf, answer: "3" })).status, 400);
+    assert.equal((await submit(url, cookie, { csrf, option: "1" })).status, 200);
+    assert.equal((await agent.hitlp.get(askId)).result?.answer, 2);
   }));

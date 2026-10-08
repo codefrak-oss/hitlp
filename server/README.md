@@ -47,6 +47,13 @@ tools (spec section 7), with a durable SQLite task store. It implements:
     decision: `decidedBy` carries the approver's id and roles, `channel` is
     `url`, and `payloadDigest` is the request's digest (or a sha256 over the
     canonical payload when it has none). A second submit is refused.
+  - answers an Ask the same way, at `/decide/<id>` behind the same login,
+    `requires` and CSRF checks: the human sees the question as received and
+    submits one answer, free text or one of the request's `options` (text is
+    parsed as JSON when `responseSchema` is not a string). The record has
+    outcome `answered`, the human's `decidedBy` and `channel` `url`. An Ask's
+    status and `_meta` do not change; `hitlp-server` logs its page URL when
+    the task is created.
 
   MFA is not built in: deployments SHOULD add it for Approve (spec 7.6) by
   plugging in an OIDC- or MFA-backed `HumanAuthenticator`. Page sessions live
