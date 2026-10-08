@@ -6,6 +6,7 @@ Decision log:
 - 2026-10-08 built in #23 (part 2 of 6)
 - 2026-10-08 built in #27 (part 3 of 6)
 - 2026-10-08 built in #30 (part 4 of 6)
+- 2026-10-08 built in #37 (part 5 of 6)
 Ticket: #10
 
 ## The question

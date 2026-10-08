@@ -1,0 +1,6 @@
+{
+  "agents": ["conformance-agent-a", "conformance-agent-b"],
+  "caps": { "approveMs": 3600000, "askMs": 7200000 },
+  "approver": { "credential": "conformance-approver", "loginPath": "/login", "field": "credential" },
+  "expiryMs": 2000
+}

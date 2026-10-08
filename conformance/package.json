@@ -1,0 +1,27 @@
+{
+  "name": "@codefrak/hitlp-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Black-box conformance suite for HITLP servers: R1-R7 and the spec's schemas, over MCP Streamable HTTP",
+  "license": "MIT",
+  "bin": {
+    "hitlp-conformance": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "~5.9.0"
+  }
+}

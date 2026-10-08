@@ -1,0 +1,1 @@
+[{ "credential": "conformance-approver", "id": "alice@example.com", "roles": ["release-manager"], "capabilities": ["deploy"] }]
