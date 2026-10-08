@@ -1,0 +1,20 @@
+{
+  "name": "hitlp-demo-hello-typescript",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HITLP (human-in-the-loop-protocol) hello world demo on the TypeScript SDK",
+  "license": "MIT",
+  "scripts": {
+    "sdk": "npm --prefix ../../sdks/typescript ci && npm --prefix ../../sdks/typescript run build",
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && node dist/src/hello.js",
+    "test": "npm run build && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "@codefrak/hitlp": "file:../../sdks/typescript"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.0"
+  }
+}
