@@ -3,9 +3,9 @@ name: sdks
 on:
   push:
     branches: [main]
-    paths: ["sdks/**", "spec/**", "demos/java/**", ".github/workflows/sdks.yml"]
+    paths: ["sdks/**", "spec/**", "demos/java/**", "demos/dotnet/**", ".github/workflows/sdks.yml"]
   pull_request:
-    paths: ["sdks/**", "spec/**", "demos/java/**", ".github/workflows/sdks.yml"]
+    paths: ["sdks/**", "spec/**", "demos/java/**", "demos/dotnet/**", ".github/workflows/sdks.yml"]
 
 jobs:
   checks:
@@ -74,3 +74,17 @@ jobs:
       - name: Demo smoke tests
         working-directory: demos/java
         run: ./gradlew test
+
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build and test the SDK
+        working-directory: sdks/dotnet
+        run: dotnet test
+      - name: Demo smoke tests
+        working-directory: demos/dotnet
+        run: dotnet test

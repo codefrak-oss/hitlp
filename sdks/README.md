@@ -10,9 +10,10 @@ Tasks lifecycle (call, poll, cancel, resume).
 | TypeScript (`@codefrak/hitlp`) | [typescript/](typescript/README.md) | `cd sdks/typescript && npm ci && npm run build && npm test` |
 | Python (`hitlp`) | [python/](python/README.md) | `cd sdks/python && pip install -e '.[test]' && pytest` |
 | Java (`org.codefrak:hitlp`) | [java/](java/README.md) | `cd sdks/java && ./gradlew test` |
+| .NET (`Codefrak.Hitlp`) | [dotnet/](dotnet/README.md) | `cd sdks/dotnet && dotnet test` |
 
 TypeScript and Python are the two languages most agent tooling, and the MCP SDKs
-themselves, are written in; Java serves agents on the JVM.
+themselves, are written in; Java serves agents on the JVM, and .NET agents on .NET.
 
 ## Shared schemas
 
