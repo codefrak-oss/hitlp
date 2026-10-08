@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hitlp"
+version = "0.1.0"
+description = "Python SDK for HITLP, the human-in-the-loop-protocol (v1.0 draft)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["jsonschema[format-nongpl]>=4.18"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Specification = "https://github.com/codefrak-oss/hitlp/blob/main/spec/hitlp.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hitlp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

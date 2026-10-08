@@ -1,0 +1,58 @@
+name: sdks
+
+on:
+  push:
+    branches: [main]
+    paths: ["sdks/**", "spec/**", ".github/workflows/sdks.yml"]
+  pull_request:
+    paths: ["sdks/**", "spec/**", ".github/workflows/sdks.yml"]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Vendored schemas match spec/
+        run: node sdks/scripts/sync-schemas.mjs --check
+      - name: The old protocol name does not appear
+        run: |
+          if git grep -n -i -w -e "h[c]p"; then
+            echo "The protocol is called HITLP; remove the old name." >&2
+            exit 1
+          fi
+
+  typescript:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    defaults:
+      run:
+        working-directory: sdks/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: sdks/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e '.[test]'
+      - run: pytest

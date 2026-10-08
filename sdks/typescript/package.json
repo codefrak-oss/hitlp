@@ -1,0 +1,23 @@
+{
+  "name": "@codefrak/hitlp",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for HITLP, the human-in-the-loop-protocol (v1.0 draft)",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/codefrak-oss/hitlp", "directory": "sdks/typescript" },
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": ["dist/src"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "idempotencyKey": "deploy-4821-prod",
+  "deadline": "2026-10-15T12:00:00Z",
+  "defaultOnTimeout": "reject",
+  "priority": "high",
+  "requires": { "roles": ["approver.production-deploy"] },
+  "context": { "summary": "Release 4.21 passed staging checks." },
+  "action": "Deploy release 4.21 to production",
+  "payload": { "service": "billing", "version": "4.21.0" },
+  "payloadDigest": "sha256:9f2c1e0a",
+  "scope": { "maxUses": 1, "notAfter": "2026-10-16T00:00:00Z" }
+}

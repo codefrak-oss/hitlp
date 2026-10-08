@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json",
+  "title": "HITLP request envelope",
+  "type": "object",
+  "required": ["idempotencyKey", "deadline", "defaultOnTimeout"],
+  "properties": {
+    "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "deadline": { "type": "string", "format": "date-time" },
+    "defaultOnTimeout": { "enum": ["reject", "escalate", "cancel", "fail"] },
+    "priority": { "enum": ["low", "normal", "high", "urgent"], "default": "normal" },
+    "requires": {
+      "type": "object",
+      "properties": {
+        "capabilities": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "roles": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "summary": { "type": "string" },
+        "links": { "type": "array", "items": { "type": "string", "format": "uri" } },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "requester": {
+      "type": "object",
+      "properties": { "agent": { "type": "string" }, "onBehalfOf": { "type": "string" } },
+      "additionalProperties": false
+    }
+  }
+}
