@@ -1,0 +1,77 @@
+# hitlp (Python)
+
+Python SDK for HITLP, the human-in-the-loop-protocol.
+
+**Implements HITLP v1.0 (draft)**: [spec/hitlp.md](../../spec/hitlp.md).
+
+It is a client-side SDK: it builds and validates `human.ask` and `human.approve`
+requests, calls them over MCP Tasks, polls or cancels the task, and interprets the
+decision record. It does not implement a HITLP server.
+
+## Install
+
+```sh
+pip install -e sdks/python          # from a checkout; not yet published
+```
+
+Python 3.10 or later. The one dependency is `jsonschema` (Draft 2020-12, with format checks).
+
+## Use
+
+```python
+from hitlp import Checkpoint, HitlpClient, build_approve, is_approved, resolve
+
+client = HitlpClient(my_transport)  # your MCP client, adapted to hitlp.TaskTransport
+
+request = build_approve(
+    deadline="2026-10-15T12:00:00Z",            # default_on_timeout defaults to "reject"
+    requires={"roles": ["approver.production-deploy"]},
+    action="Deploy release 4.21 to production",
+    payload={"service": "billing", "version": "4.21.0"},
+    payload_digest="sha256:9f2c1e0a",
+)
+task = client.approve(request)                  # returns the handle at once (R1)
+
+save(Checkpoint.for_task(task, request, "approve").to_json())   # before yielding (R3)
+
+# ...later, perhaps in another process:
+cp = Checkpoint.from_json(load())
+result = client.resume(cp)                      # polls tasks/get at pollInterval
+if result.kind == "decided" and is_approved(result.record, cp.request):
+    deploy()
+# Anything else (rejected, timed_out, cancelled, failed, digest mismatch) is not approval (R2).
+```
+
+`build_ask(question=..., response_schema=..., deadline=..., default_on_timeout=...)`
+works the same way; `answer_of(record)` gives the validated answer.
+`AsyncHitlpClient` is the asyncio form, over an `AsyncTaskTransport`.
+
+### What the SDK covers
+
+| Spec | SDK |
+| --- | --- |
+| Envelope (§5) | `build_envelope`; every builder takes its keywords |
+| Ask (§4.1), Approve (§4.2) | `build_ask`, `build_approve` |
+| Decision record (§6) | `DecisionRecord`, `resolve`, `is_approved`, `answer_of`, `verify_payload_digest` |
+| Tools, Task lifecycle (§7.1–7.4) | `HitlpClient` / `AsyncHitlpClient`: `ask`, `approve`, `get`, `cancel`, `wait_for_terminal`, `resume` |
+| R1 handle, R2 no approval from silence | handles return at once; only `approved` with a matching digest is approval |
+| R3 resumable agents | `Checkpoint` |
+| R4 idempotency | `new_idempotency_key`; client retries resend the same key |
+| Reserved primitives (§4) | `human.do` / `human.inform` / `human.escalate` raise `ReservedToolError` |
+| Schemas | `validate(name, value)`; the spec's schemas are vendored in `src/hitlp/schemas/` |
+
+The transport is three methods (`call_tool`, `get_task`, `cancel_task`), so the SDK
+does not depend on a particular MCP SDK. `hitlp.testing.FakeTransport` is an
+in-memory transport for unit tests only; an in-memory task store is not a
+conforming server.
+
+## Build and test
+
+```sh
+cd sdks/python
+pip install -e '.[test]'
+pytest
+```
+
+The vendored schemas come from `spec/` through `node sdks/scripts/sync-schemas.mjs`;
+do not edit them by hand.
