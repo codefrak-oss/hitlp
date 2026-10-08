@@ -2,6 +2,7 @@
 Status: accepted
 Decision log:
 - 2026-10-08 accepted (#10); build filed as #20
+- 2026-10-08 built in #21 (part 1 of 6)
 Ticket: #10
 
 ## The question
