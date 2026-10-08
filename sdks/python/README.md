@@ -65,13 +65,50 @@ does not depend on a particular MCP SDK. `hitlp.testing.FakeTransport` is an
 in-memory transport for unit tests only; an in-memory task store is not a
 conforming server.
 
+## Over MCP (fastmcp)
+
+`hitlp.mcp.McpTaskTransport` adapts a connected [fastmcp](https://github.com/PrefectHQ/fastmcp)
+`Client` to `AsyncTaskTransport`. It targets SEP-2663, the MCP Tasks extension
+(`io.modelcontextprotocol/tasks`), through `fastmcp[tasks]`. It is an optional extra,
+so the core SDK still depends on jsonschema alone:
+
+```sh
+pip install 'hitlp[mcp]'
+```
+
+```python
+from fastmcp import Client
+from hitlp import AsyncHitlpClient
+from hitlp.mcp import McpTaskTransport
+
+async with Client("https://hitlp.example/mcp") as mcp:
+    client = AsyncHitlpClient(McpTaskTransport(mcp))
+    task = await client.approve(req)        # task-augmented tools/call; returns the handle
+    done = await client.wait_for_terminal(task)  # tasks/get, at the server's pollIntervalMs
+```
+
+- `call_tool` returns the task handle at once; it never waits for the result.
+- `get_task` is `tasks/get`; once the task is `completed`, the inlined
+  CallToolResult's `structuredContent` is the decision record (`task.result`).
+- `cancel_task` is `tasks/cancel`, then `tasks/get` to report the cancelled task.
+- The server picks the task's ttl (SEP-2663 has no client-requested ttl);
+  `McpTaskTransport(mcp, timeout=...)` sets a per-request timeout in seconds.
+- MCP errors become `McpTransportError`, with the JSON-RPC code on `.code`.
+
+The server side needs `human.ask` and `human.approve` declared as task tools
+(`@mcp.tool(task=True)`) on a FastMCP server with `TasksExtension`; see
+`tests/test_mcp.py`. fastmcp-tasks is labeled experimental, so this adapter may
+need to follow its changes.
+
 ## Build and test
 
 ```sh
 cd sdks/python
-pip install -e '.[test]'
+pip install -e '.[test,mcp]'
 pytest
 ```
+
+Without the `mcp` extra, `tests/test_mcp.py` is skipped.
 
 The vendored schemas come from `spec/` through `node sdks/scripts/sync-schemas.mjs`;
 do not edit them by hand.
