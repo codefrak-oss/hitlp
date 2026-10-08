@@ -6,6 +6,7 @@ Runnable "hello world" agents for HITLP, the human-in-the-loop-protocol, one per
 | --- | --- | --- |
 | [typescript/](typescript/README.md) | `@codefrak/hitlp` | `npm start` |
 | [python/](python/README.md) | `hitlp` | `python hello.py` |
+| [java/](java/README.md) | `org.codefrak:hitlp` | `./gradlew run` |
 
 Each demo plays the same exchange, using both v1 sub-protocols of the [specification](../spec/hitlp.md):
 

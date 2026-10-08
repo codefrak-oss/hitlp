@@ -1,0 +1,11 @@
+{
+  "requestId": "task-7f3a",
+  "idempotencyKey": "deploy-4821-prod",
+  "primitive": "approve",
+  "outcome": "approved",
+  "decidedBy": { "type": "human", "id": "h-102", "roles": ["approver.production-deploy"] },
+  "decidedAt": "2026-10-08T18:04:11Z",
+  "channel": "url",
+  "payloadDigest": "sha256:9f2c1e0a",
+  "signature": { "alg": "ES256", "keyId": "hitlp-2026", "value": "MEUCIQ..." }
+}
