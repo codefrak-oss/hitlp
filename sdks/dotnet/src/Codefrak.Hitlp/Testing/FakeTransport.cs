@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Codefrak.Hitlp.Testing;
@@ -81,6 +82,13 @@ public class FakeTransport : TaskTransport
     public void SetStatus(string taskId, HitlpTaskStatus status, string? statusMessage = null)
     {
         lock (_lock) _tasks[taskId] = Must(taskId) with { Status = status, StatusMessage = statusMessage };
+    }
+
+    /// <summary>Sets the task's <c>_meta</c> (and so its <see cref="HitlpTask.DecisionUrl"/>); null clears it.</summary>
+    public void SetMeta(string taskId, JsonObject? meta)
+    {
+        JsonElement? element = meta == null ? null : JsonDocument.Parse(meta.ToJsonString()).RootElement.Clone();
+        lock (_lock) _tasks[taskId] = Must(taskId) with { Meta = element };
     }
 
     /// <summary>Completes the task with a decision record; <c>requestId</c> defaults to the task id.</summary>

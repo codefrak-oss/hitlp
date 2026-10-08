@@ -51,6 +51,25 @@ if (result.kind() == Resolution.Kind.DECIDED && Decisions.isApproved(result.reco
 `Ask.buildAsk(Ask.input().question(...).responseSchema(...).deadline(...).defaultOnTimeout(...))`
 works the same way; `Decisions.answerOf(record, String.class)` gives the validated answer.
 
+### URL-mode decisions and `input_required`
+
+A task carries the server's `_meta` object as `task.meta()` (a `Map<String, Object>`), `null` when the server sent
+none. When a URL-mode Approve puts the task into `input_required`, the server puts
+the decision page's URL in `_meta` under `io.hitlp/decisionUrl`; `task.decisionUrl()` returns it
+when it is a string, else `null`. For compatibility the server also sends the
+URL in `statusMessage`, so fall back to that.
+
+`WaitOptions.onInputRequired` is called once per entry into `input_required`, not on every poll: when
+the wait starts on an `input_required` task, and each time a poll sees
+`input_required` after another status (`input_required` -> `working` ->
+`input_required` calls it twice). Its task argument carries that poll's meta and
+decision URL, so opening the URL there opens it once.
+
+```java
+Task done = client.waitForTerminal(task, new HitlpClient.WaitOptions()
+        .onInputRequired(t -> openInBrowser(t.decisionUrl() != null ? t.decisionUrl() : t.statusMessage())));
+```
+
 ### What the SDK covers
 
 | Spec | SDK |

@@ -100,4 +100,5 @@ def _to_task(t: ClientCreateTaskResult | ClientGetTaskResult) -> Task:
         ttl=t.ttl_ms,
         poll_interval=t.poll_interval_ms,
         status_message=t.status_message,
+        meta=dict(t.meta) if t.meta is not None else None,
     )

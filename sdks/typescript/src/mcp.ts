@@ -4,7 +4,7 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { CallToolResultSchema, CreateTaskResultSchema, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { assertCallableTool, type HitlpTool, type TaskTransport } from "./transport";
-import { isTerminal, type DecisionRecord, type Task, type TaskStatus } from "./types";
+import { isTerminal, withMeta, type DecisionRecord, type Task, type TaskStatus } from "./types";
 
 export interface McpTaskTransportOptions {
   /** Requested task ttl in milliseconds; the server may lower it (spec 7.2). */
@@ -20,6 +20,7 @@ interface McpTask {
   ttl?: number | null;
   pollInterval?: number;
   statusMessage?: string;
+  _meta?: Record<string, unknown>;
 }
 
 /** An MCP error, with its JSON-RPC code kept on the Error. */
@@ -48,7 +49,7 @@ export class McpTaskTransport implements TaskTransport {
         this.requestOptions(),
       ),
     );
-    return toTask(res.task);
+    return toTask({ ...res.task, _meta: (res.task as McpTask)._meta ?? res._meta });
   }
 
   async getTask(taskId: string): Promise<Task> {
@@ -86,5 +87,5 @@ function toTask(t: McpTask): Task {
   if (t.ttl != null) task.ttl = t.ttl;
   if (t.pollInterval !== undefined) task.pollInterval = t.pollInterval;
   if (t.statusMessage !== undefined) task.statusMessage = t.statusMessage;
-  return task;
+  return t._meta != null ? withMeta(task, t._meta) : task;
 }

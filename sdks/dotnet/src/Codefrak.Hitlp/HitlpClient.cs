@@ -47,10 +47,13 @@ public sealed class HitlpClient
     /// </summary>
     public async Task<HitlpTask> WaitForTerminalAsync(HitlpTask task, WaitOptions? options = null, CancellationToken cancellationToken = default)
     {
+        HitlpTaskStatus? previous = null;
         while (!task.Status.IsTerminal())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (task.Status == HitlpTaskStatus.InputRequired) options?.OnInputRequired?.Invoke(task);
+            if (task.Status == HitlpTaskStatus.InputRequired && previous != HitlpTaskStatus.InputRequired)
+                options?.OnInputRequired?.Invoke(task);
+            previous = task.Status;
             var interval = task.PollInterval.HasValue ? TimeSpan.FromMilliseconds(task.PollInterval.Value) : _options.DefaultPollInterval;
             await _options.Delay(interval < TimeSpan.Zero ? TimeSpan.Zero : interval, cancellationToken).ConfigureAwait(false);
             task = await GetAsync(task.TaskId, cancellationToken).ConfigureAwait(false);
@@ -107,6 +110,10 @@ public sealed class HitlpClientOptions
 /// <summary>Options for <c>WaitForTerminalAsync</c> and <c>ResumeAsync</c>.</summary>
 public sealed class WaitOptions
 {
-    /// <summary>Called whenever the task is <c>input_required</c> (spec 7.3); polling goes on.</summary>
+    /// <summary>
+    /// Called once per entry into <c>input_required</c> (spec 7.3): when the wait starts on an
+    /// <c>input_required</c> task, or a poll sees it after another status. The task carries that
+    /// poll's <see cref="HitlpTask.Meta"/> and <see cref="HitlpTask.DecisionUrl"/>. Polling goes on.
+    /// </summary>
     public Action<HitlpTask>? OnInputRequired { get; set; }
 }

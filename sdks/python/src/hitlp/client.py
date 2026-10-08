@@ -81,13 +81,20 @@ class HitlpClient:
         stop: Optional[threading.Event] = None,
         on_input_required: Optional[Callable[[Task], None]] = None,
     ) -> Task:
-        """Polls ``tasks/get`` until terminal, never faster than ``pollInterval`` (spec 7.4)."""
+        """Polls ``tasks/get`` until terminal, never faster than ``pollInterval`` (spec 7.4).
+
+        ``on_input_required`` is called once per entry into ``input_required``: when the wait
+        starts on an ``input_required`` task, or a poll sees it after another status. Its task
+        carries that poll's ``meta`` and ``decision_url``.
+        """
         t = self.get(task) if isinstance(task, str) else task
+        previous: Optional[str] = None
         while not t.terminal:
             if stop is not None and stop.is_set():
                 raise Cancelled(t.task_id)
-            if t.status == "input_required" and on_input_required:
+            if t.status == "input_required" and previous != "input_required" and on_input_required:
                 on_input_required(t)
+            previous = t.status
             interval = t.poll_interval if t.poll_interval is not None else self._default_poll_interval
             self._sleep(max(interval, 0) / 1000)
             t = self.get(t.task_id)
@@ -149,11 +156,17 @@ class AsyncHitlpClient:
         *,
         on_input_required: Optional[Callable[[Task], Awaitable[None]]] = None,
     ) -> Task:
-        """Polls until terminal, never faster than ``pollInterval``. Cancel it as any asyncio task."""
+        """Polls until terminal, never faster than ``pollInterval``. Cancel it as any asyncio task.
+
+        ``on_input_required`` is awaited once per entry into ``input_required``, as in
+        :meth:`HitlpClient.wait_for_terminal`.
+        """
         t = await self.get(task) if isinstance(task, str) else task
+        previous: Optional[str] = None
         while not t.terminal:
-            if t.status == "input_required" and on_input_required:
+            if t.status == "input_required" and previous != "input_required" and on_input_required:
                 await on_input_required(t)
+            previous = t.status
             interval = t.poll_interval if t.poll_interval is not None else self._default_poll_interval
             await self._sleep(max(interval, 0) / 1000)
             t = await self.get(t.task_id)

@@ -154,3 +154,25 @@ def test_mcp_errors_keep_their_code():
         assert isinstance(e.value.code, int)
 
     run(body)
+
+
+def test_get_task_copies_meta_and_decision_url():
+    async def body(server, transport, client, slept):
+        task = await client.ask(ask())
+        assert task.decision_url is None
+        assert (await client.get(task.task_id)).decision_url is None
+        session = transport._client.session
+        orig = session.send_request
+
+        async def send_request(request, result_type, **kw):
+            res = await orig(request, result_type, **kw)
+            if type(request).__name__ == "GetTaskRequest":
+                res = res.model_copy(update={"meta": {"io.hitlp/decisionUrl": "https://example.test/d/1"}})
+            return res
+
+        session.send_request = send_request
+        got = await client.get(task.task_id)
+        assert got.meta == {"io.hitlp/decisionUrl": "https://example.test/d/1"}
+        assert got.decision_url == "https://example.test/d/1"
+
+    run(body)

@@ -77,6 +77,11 @@ public class FakeTransport implements TaskTransport {
         tasks.put(taskId, must(taskId).withStatus(status, statusMessage));
     }
 
+    /** Sets the task's {@code _meta} (and so its {@code decisionUrl()}); null clears it. */
+    public synchronized void setMeta(String taskId, Map<String, Object> meta) {
+        tasks.put(taskId, must(taskId).withMeta(meta));
+    }
+
     /** Completes the task with a decision record; {@code requestId} defaults to the task id. */
     public synchronized void complete(String taskId, Map<String, ?> record) {
         Map<String, Object> r = new LinkedHashMap<>();
