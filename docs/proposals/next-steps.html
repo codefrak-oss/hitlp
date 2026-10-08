@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HITLP: next steps</title>
+<style>
+:root{--fg:#1d1d1f;--muted:#666;--accent:#2f5bd3;--surface:#f4f5f8;--bg:#fff}
+@media (prefers-color-scheme: dark){:root{--fg:#ececf1;--muted:#a0a0aa;--accent:#8aa8ff;--surface:#22242b;--bg:#15161a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1,h2{line-height:1.2}h2{color:var(--accent)}
+.muted{color:var(--muted)}
+svg{width:100%;height:auto;color:var(--fg)}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%}
+td,th{border:1px solid var(--muted);padding:6px;text-align:left;vertical-align:top}
+th{background:var(--surface)}
+</style></head><body><main>
+<h1>Next steps for HITLP</h1>
+<p class="muted">Status: proposed · Ticket #10</p>
+<h2>The question</h2>
+<p>Spec, diagrams, SDKs and demos of HITLP (human-in-the-loop-protocol) have landed. Everything is client side: no HITLP server, no real MCP transport, no conformance check. What next, in what order?</p>
+<h2>The proposal</h2>
+<p>Build the server side and the proof of conformance: MCP transport adapters, a reference server, a conformance suite, demos on the real server, then publish the SDKs.</p>
+<svg viewBox="0 0 720 200" font-family="system-ui,sans-serif" font-size="13">
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+  <rect x="10" y="20" width="200" height="50" rx="6"/><rect x="260" y="20" width="200" height="50" rx="6"/><rect x="510" y="20" width="200" height="50" rx="6"/>
+  <rect x="260" y="120" width="200" height="50" rx="6"/><rect x="10" y="120" width="200" height="50" rx="6"/>
+  <path d="M210 45 H258 M460 45 H508 M360 70 V118 M110 70 V118 M180 70 L300 118"/></g>
+  <g fill="currentColor" text-anchor="middle">
+  <text x="110" y="50">1 MCP transport adapters</text><text x="360" y="50">2 Reference server</text><text x="610" y="50">3 Conformance suite</text>
+  <text x="360" y="150">4 Demos on real server</text><text x="110" y="150">5 Publish SDKs</text></g>
+</svg>
+<h2>Alternatives</h2>
+<div class="wrap"><table>
+<tr><th>Option</th><th>Proves v1 end to end</th><th>Spec churn risk</th><th>Why not</th></tr>
+<tr><td><b>Proposal</b>: server side first</td><td>Yes</td><td>Low</td><td>—</td></tr>
+<tr><td>Specify Do, Inform, Escalate first</td><td>No</td><td>High</td><td>Spec churn without feedback</td></tr>
+<tr><td>More SDK languages first</td><td>No</td><td>Low</td><td>Breadth before depth; still no server</td></tr>
+<tr><td>Publish SDKs now</td><td>No</td><td>Medium</td><td>No usable transport, draft spec; kept as step 5</td></tr>
+<tr><td>Conformance suite only</td><td>No</td><td>Low</td><td>Nothing to run the suite against</td></tr>
+</table></div>
+<h2>Open questions</h2>
+<ol>
+<li>Reference server in this repo? Settled: yes, under <code>server/</code>.</li>
+<li>Server language? Assumed TypeScript.</li>
+<li>Durable store? Assumed SQLite, swappable.</li>
+<li>When does the spec leave draft, and may the SDKs be published before then?</li>
+<li>Which reserved primitive (Do, Inform, Escalate), if any, after step 5?</li>
+</ol>
+<h2>Implementation outline</h2>
+<ol>
+<li>TypeScript MCP <code>TaskTransport</code> adapter.</li>
+<li>Python MCP <code>TaskTransport</code> adapter.</li>
+<li>Server skeleton: tools, durable store, R1, R4, R5.</li>
+<li>Server TTL, default action, caps (R2, R6).</li>
+<li>Server hosted decision page (§7.6, R7).</li>
+<li>Conformance suite, in CI against the server.</li>
+<li>Demos use the server.</li>
+<li>Publish to npm and PyPI, gated on question 4.</li>
+</ol>
+<h2>Cost</h2>
+<div class="wrap"><table>
+<tr><th>Step</th><th>Tier</th><th>Runs</th></tr>
+<tr><td>1–2 transport adapters</td><td>3</td><td>2–4</td></tr>
+<tr><td>3–5 reference server</td><td>4</td><td>3–6</td></tr>
+<tr><td>6 conformance suite</td><td>4</td><td>1–2</td></tr>
+<tr><td>7 demos on server</td><td>2</td><td>1</td></tr>
+<tr><td>8 publishing</td><td>2</td><td>1</td></tr>
+</table></div>
+<p>About 8–14 Smith runs in total.</p>
+</main></body></html>
