@@ -3,11 +3,34 @@
   "version": "0.1.0",
   "description": "TypeScript SDK for HITLP, the human-in-the-loop-protocol (v1.0 draft)",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/codefrak-oss/hitlp", "directory": "sdks/typescript" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codefrak-oss/hitlp",
+    "directory": "sdks/typescript"
+  },
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
-  "files": ["dist/src"],
-  "engines": { "node": ">=20" },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/src/mcp.d.ts",
+      "default": "./dist/src/mcp.js"
+    },
+    "./testing": {
+      "types": "./dist/src/testing.d.ts",
+      "default": "./dist/src/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
@@ -16,8 +39,18 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1"
   },
+  "peerDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@types/node": "^22.0.0",
-    "typescript": "~5.9.0"
+    "typescript": "~5.9.0",
+    "zod": "^3.25.76"
   }
 }
