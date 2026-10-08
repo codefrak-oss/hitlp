@@ -54,6 +54,27 @@ if (result.Kind == ResolutionKind.Decided && Decisions.IsApproved(result.Record,
 works the same way; `Decisions.AnswerOf<string>(record)` gives the validated answer.
 `Hitlp.FormatDateTime(DateTimeOffset)` formats a deadline as RFC 3339.
 
+### URL-mode decisions and `input_required`
+
+A task carries the server's `_meta` object as `task.Meta` (a `JsonElement?`, the object exactly as sent), `null` when the server sent
+none. When a URL-mode Approve puts the task into `input_required`, the server puts
+the decision page's URL in `_meta` under `io.hitlp/decisionUrl`; `task.DecisionUrl` returns it
+when it is a string, else `null`. For compatibility the server also sends the
+URL in `statusMessage`, so fall back to that.
+
+`WaitOptions.OnInputRequired` is called once per entry into `input_required`, not on every poll: when
+the wait starts on an `input_required` task, and each time a poll sees
+`input_required` after another status (`input_required` -> `working` ->
+`input_required` calls it twice). Its task argument carries that poll's meta and
+decision URL, so opening the URL there opens it once.
+
+```csharp
+var done = await client.WaitForTerminalAsync(task, new WaitOptions
+{
+    OnInputRequired = t => OpenInBrowser(t.DecisionUrl ?? t.StatusMessage),
+});
+```
+
 ### What the SDK covers
 
 | Spec | SDK |

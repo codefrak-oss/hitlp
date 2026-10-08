@@ -44,6 +44,26 @@ if (result.kind === "decided" && isApproved(result.record, cp)) await deploy();
 `buildAsk({ question, responseSchema, deadline, defaultOnTimeout })` works the same
 way; `answerOf(record)` gives the validated answer.
 
+### URL-mode decisions and `input_required`
+
+A task carries the server's `_meta` object as `task.meta`, undefined when the server sent
+none. When a URL-mode Approve puts the task into `input_required`, the server puts
+the decision page's URL in `_meta` under `io.hitlp/decisionUrl`; `task.decisionUrl` returns it
+when it is a string, else undefined. For compatibility the server also sends the
+URL in `statusMessage`, so fall back to that.
+
+`onInputRequired` is called once per entry into `input_required`, not on every poll: when
+the wait starts on an `input_required` task, and each time a poll sees
+`input_required` after another status (`input_required` -> `working` ->
+`input_required` calls it twice). Its task argument carries that poll's meta and
+decision URL, so opening the URL there opens it once.
+
+```ts
+const done = await client.waitForTerminal(task, {
+  onInputRequired: (t) => openInBrowser(t.decisionUrl ?? t.statusMessage),
+});
+```
+
 ### What the SDK covers
 
 | Spec | SDK |

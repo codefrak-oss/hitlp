@@ -1,5 +1,5 @@
 import type { HitlpTool, TaskTransport } from "./transport";
-import type { DecisionRecord, Task, TaskStatus } from "./types";
+import { withMeta, type DecisionRecord, type Task, type TaskStatus } from "./types";
 
 /**
  * An in-memory TaskTransport for unit tests. It is NOT a HITLP server: an
@@ -48,6 +48,12 @@ export class FakeTransport implements TaskTransport {
 
   setStatus(taskId: string, status: TaskStatus, statusMessage?: string): void {
     Object.assign(this.must(taskId), { status, statusMessage });
+  }
+
+  /** Sets the task's `_meta` (and so its `decisionUrl`); `undefined` clears it. */
+  setMeta(taskId: string, meta: Record<string, unknown> | undefined): void {
+    const t = this.must(taskId);
+    this.tasks.set(taskId, withMeta(t, meta));
   }
 
   complete(taskId: string, record: Omit<DecisionRecord, "requestId">): void {

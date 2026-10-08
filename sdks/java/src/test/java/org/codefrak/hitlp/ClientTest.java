@@ -255,4 +255,77 @@ class ClientTest {
         assertThrows(IllegalArgumentException.class, () -> Tools.assertCallableTool("human.other"));
         assertDoesNotThrow(() -> Tools.assertCallableTool("human.ask"));
     }
+
+    static final String URL = "https://example.test/d/1";
+
+    @Test
+    void decisionUrlReadsMetaOnlyWhenAString() {
+        Task base = new Task("t", TaskStatus.INPUT_REQUIRED);
+        assertEquals(URL, base.withMeta(Map.of("io.hitlp/decisionUrl", URL)).decisionUrl());
+        assertEquals(null, base.meta());
+        assertEquals(null, base.decisionUrl());
+        assertEquals(null, base.withMeta(Map.of("io.hitlp/decisionUrl", 42)).decisionUrl());
+    }
+
+    /** Drives a task through {@code script}, one status applied before each poll; returns the callback's tasks. */
+    List<Task> drive(List<String> script, boolean startInputRequired, List<Integer> pollsAtCall) throws Exception {
+        AskRequest req = ask();
+        int[] polls = {0};
+        FakeTransport t = new FakeTransport() {
+            void apply(String id, String s) {
+                if (s.equals("completed")) {
+                    complete(id, record(req.idempotencyKey(), "ask", "answered", Map.of("answer", "EUR")));
+                } else {
+                    TaskStatus st = s.equals("working") ? TaskStatus.WORKING : TaskStatus.INPUT_REQUIRED;
+                    setStatus(id, st, null);
+                    setMeta(id, st == TaskStatus.INPUT_REQUIRED ? Map.of("io.hitlp/decisionUrl", URL) : null);
+                }
+            }
+
+            @Override
+            public synchronized Task getTask(String id) {
+                apply(id, polls[0] < script.size() ? script.get(polls[0]) : "completed");
+                polls[0]++;
+                return super.getTask(id);
+            }
+
+            @Override
+            public synchronized Task callTool(String name, Map<String, Object> args) {
+                Task created = super.callTool(name, args);
+                if (startInputRequired) apply(created.taskId(), "input_required");
+                return super.getTask(created.taskId());
+            }
+        };
+        HitlpClient client = new HitlpClient(t, new HitlpClient.Options().sleeper(fakeSleep));
+        Task task = client.ask(req);
+        List<Task> seen = new ArrayList<>();
+        Task done = client.waitForTerminal(task, new HitlpClient.WaitOptions().onInputRequired(x -> {
+            seen.add(x);
+            pollsAtCall.add(polls[0]);
+        }));
+        assertEquals(TaskStatus.COMPLETED, done.status());
+        return seen;
+    }
+
+    @Test
+    void onInputRequiredFiresOncePerEntry() throws Exception {
+        List<Task> seen = drive(List.of("working", "input_required", "input_required", "input_required", "completed"), false, new ArrayList<>());
+        assertEquals(1, seen.size());
+        assertEquals(URL, seen.get(0).decisionUrl());
+    }
+
+    @Test
+    void onInputRequiredFiresAgainAfterReEntry() throws Exception {
+        List<Task> seen = drive(List.of("input_required", "input_required", "working", "input_required", "completed"), false, new ArrayList<>());
+        assertEquals(2, seen.size());
+    }
+
+    @Test
+    void onInputRequiredFiresBeforeFirstRepollWhenStartingInputRequired() throws Exception {
+        List<Integer> at = new ArrayList<>();
+        List<Task> seen = drive(List.of("input_required", "completed"), true, at);
+        assertEquals(1, seen.size());
+        assertEquals(List.of(0), at);
+        assertEquals(URL, seen.get(0).decisionUrl());
+    }
 }

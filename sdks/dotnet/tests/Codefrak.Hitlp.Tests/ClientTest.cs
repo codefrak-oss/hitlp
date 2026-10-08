@@ -285,4 +285,77 @@ public class ClientTest
         Assert.Throws<ArgumentException>(() => Tools.AssertCallableTool("human.other"));
         Tools.AssertCallableTool("human.ask");
     }
+
+    private const string Url = "https://example.test/d/1";
+
+    [Fact]
+    public void DecisionUrlReadsMetaOnlyWhenAString()
+    {
+        static System.Text.Json.JsonElement Meta(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+        var withUrl = new HitlpTask("t", HitlpTaskStatus.InputRequired, Meta: Meta("{\"io.hitlp/decisionUrl\":\"https://example.test/d/1\"}"));
+        Assert.Equal(Url, withUrl.DecisionUrl);
+        var none = new HitlpTask("t", HitlpTaskStatus.Working);
+        Assert.Null(none.Meta);
+        Assert.Null(none.DecisionUrl);
+        Assert.Null((none with { Meta = Meta("{\"io.hitlp/decisionUrl\":42}") }).DecisionUrl);
+    }
+
+    /// <summary>Applies one status of <paramref name="script"/> before each poll; returns the callback's tasks and poll counts.</summary>
+    private async Task<List<(HitlpTask Task, int Polls)>> Drive(string[] script, bool startInputRequired)
+    {
+        var req = NewAsk();
+        var polls = 0;
+        void Apply(FakeTransport f, string id, string s)
+        {
+            if (s == "completed")
+            {
+                f.Complete(id, Record(req.IdempotencyKey, "ask", "answered", Answer("EUR")));
+                return;
+            }
+            var input = s == "input_required";
+            f.SetStatus(id, input ? HitlpTaskStatus.InputRequired : HitlpTaskStatus.Working);
+            f.SetMeta(id, input ? new JsonObject { ["io.hitlp/decisionUrl"] = Url } : null);
+        }
+        var t = new Hooked(500, (f, id) => Apply(f, id, polls < script.Length ? script[polls++] : "completed"));
+        var client = new HitlpClient(t, FakeSleep());
+        var task = await client.AskAsync(req);
+        if (startInputRequired)
+        {
+            Apply(t, task.TaskId, "input_required");
+            task = task with
+            {
+                Status = HitlpTaskStatus.InputRequired,
+                Meta = System.Text.Json.JsonDocument.Parse("{\"io.hitlp/decisionUrl\":\"" + Url + "\"}").RootElement.Clone(),
+            };
+        }
+        var seen = new List<(HitlpTask, int)>();
+        var done = await client.WaitForTerminalAsync(task, new WaitOptions { OnInputRequired = x => seen.Add((x, polls)) });
+        Assert.Equal(HitlpTaskStatus.Completed, done.Status);
+        return seen;
+    }
+
+    [Fact]
+    public async Task OnInputRequiredFiresOncePerEntry()
+    {
+        var seen = await Drive(new[] { "working", "input_required", "input_required", "input_required", "completed" }, false);
+        Assert.Single(seen);
+        Assert.Equal(Url, seen[0].Task.DecisionUrl);
+    }
+
+    [Fact]
+    public async Task OnInputRequiredFiresAgainAfterReEntry()
+    {
+        var seen = await Drive(new[] { "input_required", "input_required", "working", "input_required", "completed" }, false);
+        Assert.Equal(2, seen.Count);
+        Assert.All(seen, s => Assert.Equal(Url, s.Task.DecisionUrl));
+    }
+
+    [Fact]
+    public async Task OnInputRequiredFiresBeforeTheFirstRepollWhenStartingInputRequired()
+    {
+        var seen = await Drive(new[] { "input_required", "completed" }, true);
+        Assert.Single(seen);
+        Assert.Equal(0, seen[0].Polls);
+        Assert.Equal(Url, seen[0].Task.DecisionUrl);
+    }
 }

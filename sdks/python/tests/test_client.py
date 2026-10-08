@@ -197,3 +197,126 @@ def test_async_client_round_trip():
     assert res.kind == "decided"
     assert answer_of(res.record) == "EUR"
     assert slept == [0.3, 0.3]
+
+
+URL = "https://example.test/d/1"
+
+
+def test_decision_url_reads_meta_only_when_a_string():
+    assert Task("t", "input_required", meta={"io.hitlp/decisionUrl": URL}).decision_url == URL
+    assert Task("t", "working").meta is None
+    assert Task("t", "working").decision_url is None
+    assert Task("t", "working", meta={"io.hitlp/decisionUrl": 42}).decision_url is None
+
+
+def _scripted(transport, task_id, req, script):
+    """Applies the next status in ``script`` before each ``get_task``; records the poll count."""
+    state = {"polls": 0}
+    orig = FakeTransport.get_task
+
+    def apply(status):
+        if status == "completed":
+            transport.complete(task_id, {
+                "idempotencyKey": req["idempotencyKey"], "primitive": "ask", "outcome": "answered", "answer": "EUR",
+                "decidedBy": {"type": "human", "id": "h1"}, "decidedAt": "2026-10-08T15:20:00Z",
+            })
+        else:
+            transport.set_status(task_id, status)
+            transport.set_meta(task_id, {"io.hitlp/decisionUrl": URL} if status == "input_required" else None)
+
+    def get_task(tid):
+        apply(script[state["polls"]] if state["polls"] < len(script) else "completed")
+        state["polls"] += 1
+        return orig(transport, tid)
+
+    return state, apply, get_task
+
+
+ONCE = ["working", "input_required", "input_required", "input_required", "completed"]
+TWICE = ["input_required", "input_required", "working", "input_required", "completed"]
+
+
+@pytest.mark.parametrize("script,calls", [(ONCE, 1), (TWICE, 2)])
+def test_on_input_required_fires_once_per_entry(script, calls):
+    t = FakeTransport()
+    client = HitlpClient(t, sleep=lambda s: None)
+    req = ask()
+    task = client.ask(req)
+    state, _, get_task = _scripted(t, task.task_id, req, script)
+    t.get_task = get_task
+    seen = []
+    assert client.wait_for_terminal(task, on_input_required=seen.append).status == "completed"
+    assert len(seen) == calls
+    assert all(s.decision_url == URL and s.meta == {"io.hitlp/decisionUrl": URL} for s in seen)
+
+
+def test_on_input_required_fires_before_first_repoll_when_starting_input_required():
+    t = FakeTransport()
+    client = HitlpClient(t, sleep=lambda s: None)
+    req = ask()
+    task = client.ask(req)
+    state, apply, get_task = _scripted(t, task.task_id, req, ["input_required", "completed"])
+    apply("input_required")
+    task = client.get(task.task_id)
+    t.get_task = get_task
+    seen = []
+    client.wait_for_terminal(task, on_input_required=lambda x: seen.append(state["polls"]))
+    assert seen == [0]
+
+
+@pytest.mark.parametrize("script,calls", [(ONCE, 1), (TWICE, 2)])
+def test_async_on_input_required_fires_once_per_entry(script, calls):
+    async def main():
+        t = AsyncFakeTransport()
+
+        async def sleep(s):
+            pass
+
+        client = AsyncHitlpClient(t, sleep=sleep)
+        req = ask()
+        task = await client.ask(req)
+        state, _, get_task = _scripted(t, task.task_id, req, script)
+
+        async def aget(tid):
+            return get_task(tid)
+
+        t.get_task = aget
+        seen = []
+
+        async def on(x):
+            seen.append(x)
+
+        assert (await client.wait_for_terminal(task, on_input_required=on)).status == "completed"
+        assert len(seen) == calls
+        assert all(s.decision_url == URL for s in seen)
+
+    asyncio.run(main())
+
+
+def test_async_on_input_required_fires_before_first_repoll_when_starting_input_required():
+    async def main():
+        t = AsyncFakeTransport()
+
+        async def sleep(s):
+            pass
+
+        client = AsyncHitlpClient(t, sleep=sleep)
+        req = ask()
+        task = await client.ask(req)
+        state, apply, get_task = _scripted(t, task.task_id, req, ["input_required", "completed"])
+        apply("input_required")
+        task = await client.get(task.task_id)
+
+        async def aget(tid):
+            return get_task(tid)
+
+        t.get_task = aget
+        seen = []
+
+        async def on(x):
+            seen.append(state["polls"])
+
+        await client.wait_for_terminal(task, on_input_required=on)
+        assert seen == [0]
+
+    asyncio.run(main())

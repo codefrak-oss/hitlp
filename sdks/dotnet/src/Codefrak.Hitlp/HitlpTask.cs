@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace Codefrak.Hitlp;
 
 /// <summary>
@@ -11,10 +13,28 @@ namespace Codefrak.Hitlp;
 /// <param name="PollInterval">minimum milliseconds between <c>tasks/get</c> calls, or null</param>
 /// <param name="StatusMessage">the server's status message, or null</param>
 /// <param name="Result">the decision record, once the server has one (terminal tasks; spec 7.3), or null</param>
+/// <param name="Meta">the task's <c>_meta</c> object as the server sent it, as a <see cref="JsonElement"/>
+/// (immutable JSON, keys and values exactly as sent), or null when it sent none</param>
 public sealed record HitlpTask(
     string TaskId,
     HitlpTaskStatus Status,
     long? Ttl = null,
     long? PollInterval = null,
     string? StatusMessage = null,
-    DecisionRecord? Result = null);
+    DecisionRecord? Result = null,
+    JsonElement? Meta = null)
+{
+    /// <summary>The <c>_meta</c> key under which the server carries a URL-mode decision URL.</summary>
+    public const string DecisionUrlMetaKey = "io.hitlp/decisionUrl";
+
+    /// <summary>
+    /// The URL-mode decision URL: <c>Meta["io.hitlp/decisionUrl"]</c> when that is a string,
+    /// else null. The server also puts it in <see cref="StatusMessage"/>.
+    /// </summary>
+    public string? DecisionUrl =>
+        Meta is { ValueKind: JsonValueKind.Object } meta
+            && meta.TryGetProperty(DecisionUrlMetaKey, out var url)
+            && url.ValueKind == JsonValueKind.String
+            ? url.GetString()
+            : null;
+}

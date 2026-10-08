@@ -50,6 +50,10 @@ class FakeTransport:
         t = self._tasks[task_id]
         t.status, t.status_message = status, message
 
+    def set_meta(self, task_id: str, meta: Optional[dict[str, Any]]) -> None:
+        """Sets the task's ``_meta`` (and so its ``decision_url``); ``None`` clears it."""
+        self._tasks[task_id].meta = meta
+
     def complete(self, task_id: str, record: dict[str, Any]) -> None:
         t = self._tasks[task_id]
         t.status = "completed"

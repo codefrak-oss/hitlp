@@ -93,4 +93,33 @@ export interface Task<R extends DecisionRecord = DecisionRecord> {
   statusMessage?: string;
   /** The decision record, once the server has one (terminal tasks; spec 7.3). */
   result?: R;
+  /** The task's `_meta` object as the server sent it; absent when it sent none. */
+  meta?: Record<string, unknown>;
+  /**
+   * The decision URL of a URL-mode Approve: `meta["io.hitlp/decisionUrl"]` when
+   * that is a string, else absent. The server also puts it in `statusMessage`.
+   */
+  decisionUrl?: string;
+}
+
+/** The `_meta` key under which the server carries a URL-mode decision URL. */
+export const DECISION_URL_META_KEY = "io.hitlp/decisionUrl";
+
+/** The decision URL in a task's `_meta`, or undefined when absent or not a string. */
+export function decisionUrlOf(meta: Record<string, unknown> | null | undefined): string | undefined {
+  const url = meta?.[DECISION_URL_META_KEY];
+  return typeof url === "string" ? url : undefined;
+}
+
+/** Sets `meta` (and `decisionUrl` from it) on a task; `undefined` clears both. */
+export function withMeta<T extends Task<any>>(task: T, meta: Record<string, unknown> | null | undefined): T {
+  const out = { ...task };
+  delete out.meta;
+  delete out.decisionUrl;
+  if (meta != null) {
+    out.meta = meta;
+    const url = decisionUrlOf(meta);
+    if (url !== undefined) out.decisionUrl = url;
+  }
+  return out;
 }

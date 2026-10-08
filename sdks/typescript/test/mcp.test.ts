@@ -84,3 +84,20 @@ test("reserved tools are refused before reaching the server", async () => {
     await server.close();
   }
 });
+
+test("getTask copies the MCP task's _meta into meta and decisionUrl", async () => {
+  const { server, client } = await setup();
+  try {
+    const task = await client.ask(ask());
+    assert.equal(task.meta, undefined);
+    assert.equal((await client.get(task.taskId)).meta, undefined);
+    const tasks = server.client.experimental.tasks;
+    const orig = tasks.getTask.bind(tasks);
+    tasks.getTask = (async (...a: Parameters<typeof orig>) => ({ ...(await orig(...a)), status: "input_required", _meta: { "io.hitlp/decisionUrl": "https://example.test/d/1" } })) as typeof orig;
+    const got = await client.get(task.taskId);
+    assert.deepEqual(got.meta, { "io.hitlp/decisionUrl": "https://example.test/d/1" });
+    assert.equal(got.decisionUrl, "https://example.test/d/1");
+  } finally {
+    await server.close();
+  }
+});

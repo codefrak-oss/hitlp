@@ -18,7 +18,11 @@ export interface ClientOptions {
 
 export interface WaitOptions {
   signal?: AbortSignal;
-  /** Called whenever the task is `input_required` (spec 7.3); polling goes on. */
+  /**
+   * Called once per entry into `input_required` (spec 7.3): when the wait starts
+   * on an `input_required` task, or a poll sees it after another status. The
+   * task carries that poll's `meta` and `decisionUrl`. Polling goes on.
+   */
   onInputRequired?: (task: Task) => void | Promise<void>;
 }
 
@@ -85,9 +89,11 @@ export class HitlpClient {
     options: WaitOptions = {},
   ): Promise<Task<R>> {
     let task = typeof taskOrId === "string" ? ((await this.get(taskOrId)) as Task<R>) : taskOrId;
+    let previous: string | undefined;
     while (!isTerminal(task.status)) {
       options.signal?.throwIfAborted();
-      if (task.status === "input_required") await options.onInputRequired?.(task);
+      if (task.status === "input_required" && previous !== "input_required") await options.onInputRequired?.(task);
+      previous = task.status;
       await this.sleep(Math.max(task.pollInterval ?? this.defaultPollInterval, 0), options.signal);
       task = (await this.get(task.taskId)) as Task<R>;
     }

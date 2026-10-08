@@ -15,6 +15,9 @@ import {
   verifyPayloadDigest,
   type DecisionRecord,
   type Sleep,
+  type Task,
+  decisionUrlOf,
+  withMeta,
 } from "../src";
 import { FakeTransport } from "../src/testing";
 
@@ -158,4 +161,65 @@ test("reserved tool names are not callable", () => {
   }
   assert.throws(() => assertCallableTool("human.other"));
   assert.doesNotThrow(() => assertCallableTool("human.ask"));
+});
+
+test("decisionUrlOf reads io.hitlp/decisionUrl only when it is a string", () => {
+  const t: Task = withMeta({ taskId: "t", status: "input_required" }, { "io.hitlp/decisionUrl": "https://example.test/d/1" });
+  assert.equal(t.decisionUrl, "https://example.test/d/1");
+  assert.equal(decisionUrlOf(t.meta), "https://example.test/d/1");
+  const none: Task = { taskId: "t", status: "working" };
+  assert.equal(none.meta, undefined);
+  assert.equal(decisionUrlOf(none.meta), undefined);
+  assert.equal(withMeta(none, undefined).decisionUrl, undefined);
+  const bad = withMeta(none, { "io.hitlp/decisionUrl": 42 });
+  assert.equal(bad.decisionUrl, undefined);
+  assert.equal(decisionUrlOf(bad.meta), undefined);
+});
+
+async function driveInputRequired(script: ("working" | "input_required" | "completed")[], startOn?: "input_required") {
+  const t = new FakeTransport();
+  const client = new HitlpClient(t, { sleep: fakeClock().sleep });
+  const req = ask();
+  let task: Task = await client.ask(req);
+  const url = "https://example.test/d/1";
+  const apply = (s: string) => {
+    if (s === "completed") t.complete(task.taskId, { idempotencyKey: req.idempotencyKey, primitive: "ask", outcome: "answered", answer: "EUR", decidedBy: { type: "human", id: "h1" }, decidedAt: "2026-10-08T15:20:00Z" });
+    else {
+      t.setStatus(task.taskId, s as "working");
+      t.setMeta(task.taskId, s === "input_required" ? { "io.hitlp/decisionUrl": url } : undefined);
+    }
+  };
+  if (startOn) {
+    apply(startOn);
+    task = await client.get(task.taskId);
+  }
+  const seen: { task: Task; polls: number }[] = [];
+  let polls = 0;
+  const origGet = t.getTask.bind(t);
+  t.getTask = async (id) => {
+    apply(script[polls++] ?? "completed");
+    return origGet(id);
+  };
+  const done = await client.waitForTerminal(task, { onInputRequired: (x) => void seen.push({ task: x, polls }) });
+  assert.equal(done.status, "completed");
+  return { seen, url };
+}
+
+test("onInputRequired fires once per entry, not per poll", async () => {
+  const { seen, url } = await driveInputRequired(["working", "input_required", "input_required", "input_required", "completed"]);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].task.decisionUrl, url);
+  assert.deepEqual(seen[0].task.meta, { "io.hitlp/decisionUrl": url });
+});
+
+test("onInputRequired fires again after leaving and re-entering input_required", async () => {
+  const { seen, url } = await driveInputRequired(["input_required", "input_required", "working", "input_required", "completed"]);
+  assert.equal(seen.length, 2);
+  assert.ok(seen.every((s) => s.task.decisionUrl === url));
+});
+
+test("onInputRequired fires before the first re-poll when the wait starts on input_required", async () => {
+  const { seen } = await driveInputRequired(["input_required", "input_required", "completed"], "input_required");
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].polls, 0);
 });

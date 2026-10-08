@@ -60,7 +60,11 @@ public final class HitlpClient {
             return this;
         }
 
-        /** Called whenever the task is {@code input_required} (spec 7.3); polling goes on. */
+        /**
+         * Called once per entry into {@code input_required} (spec 7.3): when the wait starts on
+         * an {@code input_required} task, or a poll sees it after another status. The task
+         * carries that poll's {@code meta} and {@code decisionUrl()}. Polling goes on.
+         */
         public WaitOptions onInputRequired(Consumer<Task> onInputRequired) {
             this.onInputRequired = onInputRequired;
             return this;
@@ -118,11 +122,14 @@ public final class HitlpClient {
      * Throws {@link java.util.concurrent.CancellationException} when the signal is cancelled.
      */
     public Task waitForTerminal(Task task, WaitOptions options) throws InterruptedException {
+        TaskStatus previous = null;
         while (!task.status().isTerminal()) {
             if (options.signal != null) options.signal.throwIfCancelled();
-            if (task.status() == TaskStatus.INPUT_REQUIRED && options.onInputRequired != null) {
+            if (task.status() == TaskStatus.INPUT_REQUIRED && previous != TaskStatus.INPUT_REQUIRED
+                    && options.onInputRequired != null) {
                 options.onInputRequired.accept(task);
             }
+            previous = task.status();
             long interval = task.pollInterval() != null ? task.pollInterval() : defaultPollInterval;
             sleeper.sleep(Math.max(interval, 0), options.signal);
             task = get(task.taskId());

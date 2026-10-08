@@ -81,6 +81,10 @@ def is_terminal(status: str) -> bool:
     return status in TERMINAL_STATUSES
 
 
+DECISION_URL_META_KEY = "io.hitlp/decisionUrl"
+"""The ``_meta`` key under which the server carries a URL-mode decision URL."""
+
+
 @dataclass
 class Task:
     """A task handle as the transport reports it (spec 7.2). Times are in milliseconds."""
@@ -91,6 +95,17 @@ class Task:
     poll_interval: Optional[int] = None
     status_message: Optional[str] = None
     result: Optional[DecisionRecord] = None
+    meta: Optional[dict[str, Any]] = None
+    """The task's ``_meta`` object as the server sent it; ``None`` when it sent none."""
+
+    @property
+    def decision_url(self) -> Optional[str]:
+        """The URL-mode decision URL: ``meta["io.hitlp/decisionUrl"]`` when that is a string, else ``None``.
+
+        The server also puts it in ``status_message``.
+        """
+        url = (self.meta or {}).get(DECISION_URL_META_KEY)
+        return url if isinstance(url, str) else None
 
     @property
     def terminal(self) -> bool:
