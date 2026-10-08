@@ -19,6 +19,8 @@ const targets = [
   { from: "spec/examples", to: "sdks/python/tests/examples" },
   { from: "spec/schemas", to: "sdks/java/src/main/resources/hitlp/schemas" },
   { from: "spec/examples", to: "sdks/java/src/test/resources/hitlp/examples" },
+  { from: "spec/schemas", to: "sdks/dotnet/src/Codefrak.Hitlp/Schemas" },
+  { from: "spec/examples", to: "sdks/dotnet/tests/Codefrak.Hitlp.Tests/Examples" },
 ];
 
 let drift = 0;

@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{55E4EA0F-79E5-4485-8922-4EC844C7AAD9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Codefrak.Hitlp", "src\Codefrak.Hitlp\Codefrak.Hitlp.csproj", "{FC259DC8-C978-4B0A-93AC-9CFCAA0F65D1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{B261C9A2-3F5B-4D59-A3DB-DA07A032073E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Codefrak.Hitlp.Tests", "tests\Codefrak.Hitlp.Tests\Codefrak.Hitlp.Tests.csproj", "{A202E6A6-2517-455E-AA9C-5C387F156FC4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FC259DC8-C978-4B0A-93AC-9CFCAA0F65D1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC259DC8-C978-4B0A-93AC-9CFCAA0F65D1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC259DC8-C978-4B0A-93AC-9CFCAA0F65D1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC259DC8-C978-4B0A-93AC-9CFCAA0F65D1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A202E6A6-2517-455E-AA9C-5C387F156FC4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A202E6A6-2517-455E-AA9C-5C387F156FC4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A202E6A6-2517-455E-AA9C-5C387F156FC4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A202E6A6-2517-455E-AA9C-5C387F156FC4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{FC259DC8-C978-4B0A-93AC-9CFCAA0F65D1} = {55E4EA0F-79E5-4485-8922-4EC844C7AAD9}
+		{A202E6A6-2517-455E-AA9C-5C387F156FC4} = {B261C9A2-3F5B-4D59-A3DB-DA07A032073E}
+	EndGlobalSection
+EndGlobal
