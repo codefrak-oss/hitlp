@@ -25,6 +25,7 @@ jobs:
         working-directory: conformance
         run: npm ci && npm run build
       - name: Run the suite against server/
+        shell: bash
         run: conformance/run-against-server.sh 2>&1 | tee conformance/conformance.log
       - if: always()
         uses: actions/upload-artifact@v4
