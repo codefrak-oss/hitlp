@@ -13,8 +13,47 @@ tools (spec section 7), with a durable SQLite task store. It implements:
   `tasks/cancel` resolves the caller from its bearer token (`authInfo.token`)
   and only shows a task to the client that created it.
 
-Rules R2, R3, R6 and R7 (TTL default actions, TTL caps, a decision page) are
-not built yet; `HitlpServer.decide` stands in for the human's decision page.
+- **R2**: a task's effective deadline is the earliest of its `deadline`, the
+  MCP task `ttl` the client asked for, and the cap. When it passes, the server
+  applies `defaultOnTimeout` and writes a decision record with
+  `decidedBy.type: policy`: `reject` ends `completed` (`rejected` for Approve,
+  `timed_out` for Ask), `cancel` ends `cancelled`, `fail` ends `failed`, and
+  `escalate` calls `onEscalate` and keeps waiting `escalationGraceMs` (24h by
+  default) before it rejects. Expiry runs on start, on a timer
+  (`expirySweepMs`, 30s) and on every read. Store updates are compare-and-set,
+  so an expiry and a late decision cannot both win. Terminal tasks are kept
+  (the retention period of spec 7.5 is unbounded).
+- **R6**: TTLs are capped per primitive (Approve 24h, Ask 7 days; `caps`,
+  `--approve-cap-hours`, `--ask-cap-hours`); a longer deadline is shortened
+  and the effective deadline reported in `ttl`. An Approve whose `scope` has
+  no `notAfter` or no `maxUses` is refused unless `allowBlanketScope`
+  (`--allow-blanket-scope`) is set.
+- **R7 / spec 7.6**: with a decision page configured, `human.approve` moves the
+  task to `input_required` with `statusMessage` `Decision required: <url>` and
+  `_meta["io.hitlp/decisionUrl"]`. The task stays there until the human decides
+  or the TTL passes, then goes straight to terminal; the client never submits
+  anything. The page (`DecisionPage`, `src/decision-page.ts`):
+  - authenticates humans through the `HumanAuthenticator` interface; the
+    static implementation reads `--approvers`, a list of human profiles
+    (`{"credential", "id", "roles", "capabilities"}`, spec section 3). The
+    server refuses to start if a credential is also an agent token;
+  - takes a login form that sets a `SameSite=Strict`, `HttpOnly` session
+    cookie, and refuses any request with an `Authorization` header; the URL
+    alone grants nothing;
+  - checks the task's `requires.roles` and `requires.capabilities` when the
+    page loads and on submit, and protects the form with a per-session,
+    per-task CSRF token;
+  - shows the action and payload exactly as received and records one
+    decision: `decidedBy` carries the approver's id and roles, `channel` is
+    `url`, and `payloadDigest` is the request's digest (or a sha256 over the
+    canonical payload when it has none). A second submit is refused.
+
+  MFA is not built in: deployments SHOULD add it for Approve (spec 7.6) by
+  plugging in an OIDC- or MFA-backed `HumanAuthenticator`. Page sessions live
+  in memory, so a restart asks approvers to sign in again.
+
+R3 is the agent's (the SDKs' checkpoints). Without a decision page,
+`HitlpServer.decide` is how a decision is recorded.
 
 The store sits behind the `TaskStore` interface (`src/store.ts`) so another
 backend can replace SQLite.
@@ -37,6 +76,10 @@ The tests drive the server through the SDK's `McpTaskTransport`.
 npm run build
 node dist/src/main.js --db hitlp.db --tokens tokens.json
 ```
+
+With `--approvers approvers.json` the decision page listens on `--page-port`
+(8080) on `--page-host` (127.0.0.1); `--page-url` is its public base URL, and an
+`https:` one marks the cookie `Secure`. Serve it behind TLS.
 
 `tokens.json` maps bearer tokens to client ids (`{"secret": "agent-1"}`); over
 stdio the token comes from `HITLP_TOKEN`. Without `--tokens` one client,

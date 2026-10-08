@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import type { DecisionRecord, TaskStatus } from "@codefrak/hitlp";
-import { DuplicateKeyError, type NewTask, type StoredTask, type TaskStore } from "./store";
+import { DuplicateKeyError, TerminalTaskError, type NewTask, type StoredTask, type TaskStore, type UpdateOptions } from "./store";
 
 const MIGRATIONS = [
   `CREATE TABLE tasks (
@@ -19,7 +19,14 @@ const MIGRATIONS = [
      result TEXT,
      UNIQUE (client_id, idempotency_key)
    )`,
+  `ALTER TABLE tasks ADD COLUMN deadline_at INTEGER;
+   ALTER TABLE tasks ADD COLUMN final_deadline_at INTEGER;
+   ALTER TABLE tasks ADD COLUMN meta TEXT;
+   UPDATE tasks SET deadline_at = CAST(strftime('%s', created_at) AS INTEGER) * 1000 + ttl;
+   CREATE INDEX tasks_open_deadline ON tasks (status, deadline_at)`,
 ];
+
+const OPEN = "status NOT IN ('completed', 'failed', 'cancelled')";
 
 interface Row {
   id: string;
@@ -35,6 +42,9 @@ interface Row {
   created_at: string;
   updated_at: string;
   result: string | null;
+  deadline_at: number;
+  final_deadline_at: number | null;
+  meta: string | null;
 }
 
 function fromRow(r: Row): StoredTask {
@@ -48,10 +58,13 @@ function fromRow(r: Row): StoredTask {
     status: r.status,
     ttl: r.ttl,
     pollInterval: r.poll_interval,
+    deadlineAt: r.deadline_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
   if (r.status_message !== null) t.statusMessage = r.status_message;
+  if (r.final_deadline_at !== null) t.finalDeadlineAt = r.final_deadline_at;
+  if (r.meta !== null) t.meta = JSON.parse(r.meta);
   if (r.result !== null) t.result = JSON.parse(r.result) as DecisionRecord;
   return t;
 }
@@ -74,14 +87,13 @@ export class SqliteTaskStore implements TaskStore {
   }
 
   create(task: NewTask): StoredTask {
-    const now = new Date().toISOString();
     try {
       this.db
         .prepare(
-          `INSERT INTO tasks (id, client_id, idempotency_key, request_hash, primitive, request, status, ttl, poll_interval, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'working', ?, ?, ?, ?)`,
+          `INSERT INTO tasks (id, client_id, idempotency_key, request_hash, primitive, request, status, ttl, poll_interval, deadline_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'working', ?, ?, ?, ?, ?)`,
         )
-        .run(task.id, task.clientId, task.idempotencyKey, task.requestHash, task.primitive, JSON.stringify(task.request), task.ttl, task.pollInterval, now, now);
+        .run(task.id, task.clientId, task.idempotencyKey, task.requestHash, task.primitive, JSON.stringify(task.request), task.ttl, task.pollInterval, task.deadlineAt, task.createdAt, task.createdAt);
     } catch (e) {
       const existing = this.findByKey(task.clientId, task.idempotencyKey);
       if (existing && (e as { code?: string }).code?.startsWith("SQLITE_CONSTRAINT")) throw new DuplicateKeyError(existing);
@@ -100,12 +112,34 @@ export class SqliteTaskStore implements TaskStore {
     return r && fromRow(r);
   }
 
-  update(id: string, status: TaskStatus, opts: { result?: DecisionRecord; statusMessage?: string } = {}): StoredTask {
+  update(id: string, status: TaskStatus, opts: UpdateOptions = {}): StoredTask {
     const res = this.db
-      .prepare("UPDATE tasks SET status = ?, status_message = ?, result = COALESCE(?, result), updated_at = ? WHERE id = ?")
-      .run(status, opts.statusMessage ?? null, opts.result ? JSON.stringify(opts.result) : null, new Date().toISOString(), id);
-    if (res.changes === 0) throw new Error(`no task ${id}`);
+      .prepare(
+        `UPDATE tasks SET status = ?, status_message = ?, result = COALESCE(?, result), meta = COALESCE(?, meta),
+           final_deadline_at = COALESCE(?, final_deadline_at), updated_at = ?
+         WHERE id = ? AND ${OPEN}`,
+      )
+      .run(
+        status,
+        opts.statusMessage ?? null,
+        opts.result ? JSON.stringify(opts.result) : null,
+        opts.meta ? JSON.stringify(opts.meta) : null,
+        opts.finalDeadlineAt ?? null,
+        new Date().toISOString(),
+        id,
+      );
+    if (res.changes === 0) {
+      const existing = this.getById(id);
+      if (!existing) throw new Error(`no task ${id}`);
+      throw new TerminalTaskError(existing);
+    }
     return this.getById(id)!;
+  }
+
+  listOpenExpiring(now: number): StoredTask[] {
+    return (
+      this.db.prepare(`SELECT * FROM tasks WHERE ${OPEN} AND COALESCE(final_deadline_at, deadline_at) <= ? ORDER BY deadline_at, id`).all(now) as Row[]
+    ).map(fromRow);
   }
 
   list(clientId: string): StoredTask[] {
