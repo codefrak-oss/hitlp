@@ -124,7 +124,7 @@ Runnable hello-world demos, one per SDK, are in [demos/](demos/README.md):
 - [diagrams/](diagrams/README.md): Mermaid diagrams of the Ask and Approve sub-protocols.
 - [sdks/](sdks/README.md): client SDKs, in TypeScript, Python, Java and .NET.
 - [demos/](demos/README.md): runnable hello-world demos built on the SDKs.
-- [server/](server/README.md): a reference server (TypeScript, SQLite task store).
+- [server/](server/README.md): a reference server (TypeScript, SQLite task store) with the surface API (`/surface/v1`, spec 7.8) for the decision page and apps; packaged as a container (`server/Dockerfile`) and a Mac LaunchDaemon (`server/packaging/`).
 - [conformance/](conformance/README.md): a black-box conformance suite for any server.
 
 See [LICENSE](LICENSE) for license terms.

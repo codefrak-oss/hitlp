@@ -3,6 +3,7 @@
 //   [--admins <file.json>] [--page-port <n>] [--approve-cap-hours <h>] [--ask-cap-hours <h>] [--allow-blanket-scope]
 //   [--http-port <n> [--http-host <h>]] [--surfaces <file.json> [--surface-recent-hours <h>]]
 //   [--apns-key <file.p8> --apns-key-id <id> --apns-team-id <id> --apns-bundle-id <id> [--apns-sandbox]]
+// Over HTTP --tokens is required, and --page-url with --approvers: no default.
 // Serves one client over stdio, or with --http-port any number of clients over
 // MCP Streamable HTTP at /mcp, each request's Authorization bearer token naming
 // its client (R5). The tokens file maps bearer tokens to client ids;
@@ -52,6 +53,17 @@ const { values } = parseArgs({
     "apns-sandbox": { type: "boolean", default: false },
   },
 });
+// Over HTTP nothing defaults: a missing setting stops the server, naming it.
+const httpMode = values["http-port"] !== undefined;
+const missing = [
+  httpMode && !values.tokens && "--tokens (HTTP mode)",
+  httpMode && values.approvers && !values["page-url"] && "--page-url (HTTP mode with --approvers)",
+].filter(Boolean);
+if (missing.length) {
+  console.error(`hitlp: missing required setting ${missing.join(", ")}`);
+  process.exit(2);
+}
+// Over stdio one local client is allowed without a tokens file.
 const tokens: Record<string, string> = values.tokens ? JSON.parse(readFileSync(values.tokens, "utf8")) : { local: "local" };
 const auth = new StaticTokenAuthenticator(tokens);
 const humans = values.approvers ? new StaticApproverAuthenticator(JSON.parse(readFileSync(values.approvers, "utf8"))) : undefined;
@@ -59,7 +71,7 @@ if (values.admins && !humans) throw new Error("--admins needs --approvers: rules
 const admins = values.admins ? new StaticAdminAuthenticator(JSON.parse(readFileSync(values.admins, "utf8"))) : undefined;
 const store = new SqliteTaskStore(values.db!);
 const port = Number(values["page-port"]);
-const pageUrl = (values["page-url"] ?? `http://${values["page-host"]}:${port}`).replace(/\/$/, "");
+const pageUrl = (values["page-url"] ?? (httpMode ? "" : `http://${values["page-host"]}:${port}`)).replace(/\/$/, "");
 const hours = (v: string | undefined) => (v === undefined ? undefined : Number(v) * HOUR);
 const server = new HitlpServer({
   store,
