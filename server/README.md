@@ -108,7 +108,52 @@ HITLP 0.2 (spec 3.1, 5.1–5.4, 6):
   request had one, `recommendation` equal to `asserted.recommendation`.
   `decidedBy.type` is `human`, `rule` or `policy`; `model` (proxy layer 2,
   prose rules) is reserved by the schema and not implemented. Human records
-  keep `channel: "url"`. Records are not signed.
+  name the surface in `channel`: `url` from the decision page, the surface's
+  `kind` from the surface API. Records are not signed.
+- **Surfaces / spec 7.8**: every human decision, from the page or the surface
+  API, goes through one path, `HitlpServer.decideAsHuman(taskId, human,
+  channel, decision)`: the human must satisfy the task's `requires`, the task
+  must be open, an Approve's decision is bound to its `payloadDigest` and an
+  Ask's answer must match its `responseSchema` (and be one of its `options`).
+
+## Surface API
+
+With `--surfaces surfaces.json` the server answers a REST + JSON API at
+`/surface/v1`, on the MCP listener (`--http-port`) and on the decision page's
+origin, for the surfaces a human decides on: the hosted page, a desktop app, a
+phone app (spec 7.8). The surfaces file is a list of
+`{"credential", "id", "human", "kind"}`: `human` is an approver id from
+`--approvers` (its roles and capabilities route tasks), `kind` (`page`,
+`desktop`, `phone`, ...) becomes the records' `channel`. Revoke a surface by
+removing it from the file and restarting.
+
+Every call sends `Authorization: Bearer <surface credential>` and is resolved
+afresh (R5). A requester token, an approver credential or no credential gets
+401 here; a surface credential on `/mcp` gets 401; the server refuses to start
+when a surface credential is also a requester token, approver or admin
+credential. A task is routed to the humans whose roles and capabilities
+satisfy its `requires`; to anyone else it is not listed and answers 404.
+
+| Call | Answer |
+| --- | --- |
+| `GET /surface/v1/tasks` | `{"tasks": [view, ...]}`: open tasks routed to the human, and those decided in the last `--surface-recent-hours` (24), newest first. |
+| `GET /surface/v1/tasks/{id}` | The task view: `id`, `primitive`, `status`, `createdAt`, `deadline` (effective), `requiresHuman`, `attested` (`source: "server"`), `asserted` (`source: "requester"`: `why`, `recommendation`, `lineage` newest first), for an Approve `action`, `payload` as received and `payloadDigest`, for an Ask `question`, `responseSchema`, `options`; `context`, `requires`, and `result` once decided. |
+| `POST /surface/v1/tasks/{id}/decision` | Body `{"outcome": "approve" \| "reject", "reason"?, "payloadDigest"?}` for an Approve, `{"answer", "reason"?}` for an Ask. 200 with the decision record; 400 for a malformed decision or an answer the schema refuses; 404 when not routed; 409 when already decided or the digest is stale. |
+| `PUT /surface/v1/devices/{id}` | Body `{"platform": "apns", "token", "environment"?: "production" \| "sandbox", "name"?}`; 200 with the device. |
+| `DELETE /surface/v1/devices/{id}` | 204, or 404 when this surface has no such device. |
+| `GET /surface/v1/events` | `text/event-stream`: one `event: task` (`id` the task id, `data` the view) per task routed to the human created after the stream opened; keep-alive comments every 25 s. |
+
+Errors are JSON, `{"error": "..."}`. Devices live in the `SurfaceStore`
+(`src/store.ts`; SQLite in `src/sqlite-store.ts`).
+
+Push: with `--apns-key <AuthKey.p8> --apns-key-id <id> --apns-team-id <id>
+--apns-bundle-id <id>` (and `--apns-sandbox` for devices that name no
+environment) each new task is pushed once to every device of every human it is
+routed to, never for an R4 repeat or a rule's decision. The alert carries a
+title and the task id, never the request's content; the app fetches the task
+with its own credential. A device APNs answers 410 for is dropped. Without
+the flags the server logs once and pushes nothing. Other push services plug in
+as a `PushSender` (`src/push.ts`).
 
 R3 is the agent's (the SDKs' checkpoints). Without a decision page,
 `HitlpServer.decide` is how a decision is recorded.
@@ -143,7 +188,8 @@ refused. The conformance suite (`../conformance`) runs against that URL.
 With `--approvers approvers.json` the decision page listens on `--page-port`
 (8080) on `--page-host` (127.0.0.1); `--page-url` is its public base URL, and an
 `https:` one marks the cookie `Secure`. Serve it behind TLS. `--admins
-admins.json` adds rule administrators (it needs `--approvers`).
+admins.json` adds rule administrators (it needs `--approvers`). `--surfaces
+surfaces.json` turns on the surface API (it needs `--approvers`; see above).
 
 `tokens.json` maps bearer tokens to client ids (`{"secret": "agent-1"}`); over
 stdio the token comes from `HITLP_TOKEN`. Without `--tokens` one client,

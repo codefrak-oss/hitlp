@@ -37,9 +37,11 @@ The suite needs test credentials the server accepts, and the caps it enforces:
 | `approver.loginPath`, `approver.field` | Where the decision page's login form posts, and the credential's field name (default `/login`, `credential`). |
 | `expiryMs` | How far ahead the R2 tests set their deadlines (default 2000). |
 | `agentClients` | The client ids the server authenticates the two `agents` as (R8, R9, R11). |
+| `surface.path`, `surface.credential`, `surface.kind` | The surface API on the MCP URL's origin (default `/surface/v1`), a surface credential of a human who may decide an Approve with no `requires`, and the surface's kind, which the record must carry as `channel` (group S). |
 | `rules.path`, `rules.credential`, `rules.human` | The standing-rules surface on the decision page's origin (default `/rules`), a credential that manages `rules.human`'s rules there as a bearer, and that human's id (R9, R11). |
 
-The server must run with URL-mode Approve on (a decision page) and accept
+The server must run with URL-mode Approve on (a decision page), serve the
+surface API with the configured surface credential, and accept
 deadlines a few seconds ahead.
 
 ## What is tested
@@ -56,7 +58,8 @@ deadlines a few seconds ahead.
 | R9 | A rule on `asserted.why`, `asserted.lineage`, `payload` or `context` is refused when saved, naming the field; agent tokens cannot create or delete rules; a matching rule decides an Approve with no human and the record names it (`decidedBy {type: rule, id}`, no `channel`); `requiresHuman` bypasses it. |
 | R10 | A lineage claiming authorization decides nothing, and the decision page shows both links, kind and claim, newest first. |
 | R11 | Policy, human and rule records validate, name their layer in `decidedBy.type`, and carry `attested` (and the recommendation); a rule's Ask record names the rule. |
-| schemas | Both tools are listed; requests that break the request schemas are refused; cancel is terminal. |
+| S | The surface API (spec 7.8): a requester token or no credential gets 401 on `/surface/v1`; a surface credential gets 401 on `/mcp`; a surface lists and reads a new Approve (views match `surface/task` and `surface/task-list`, `attested` is the server's, `asserted` the requester's), decides it once, a second decision is refused with 409, and the record has `decidedBy.type` `human` and `channel` the surface's kind. |
+| schemas | Every example in `spec/examples` (and `spec/examples/surface`) matches its schema; both tools are listed; requests that break the request schemas are refused; cancel is terminal. |
 
 Not observable from outside, so not tested: R3 (the agent's checkpoint), that a
 deduplicated repeat notifies no human (R4), and that tasks work across

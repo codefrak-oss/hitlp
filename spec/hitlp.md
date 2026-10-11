@@ -1,10 +1,10 @@
 # HITLP: Human-in-the-Loop Protocol
 
-**Version:** 0.2 (draft) · **MCP binding target:** MCP 2026-07-28 with the Tasks extension (`io.modelcontextprotocol/tasks`)
+**Version:** 0.3 (draft) · **MCP binding target:** MCP 2026-07-28 with the Tasks extension (`io.modelcontextprotocol/tasks`)
 
-0.2 supersedes 0.1, the first draft (previously numbered 1.0; renumbered because the
-protocol is provisional and has no adopters to hold to it). What changed:
-[CHANGELOG.md](CHANGELOG.md). 0.2 stays a draft until a server and a requester have
+0.3 adds the surface API (7.8) to 0.2, which superseded 0.1, the first draft (previously
+numbered 1.0; renumbered because the protocol is provisional and has no adopters to hold
+to it). What changed: [CHANGELOG.md](CHANGELOG.md). 0.3 stays a draft until a server and a requester have
 run against it; the numbers below 1.0 say that breaking changes are still expected.
 
 ## 1. Introduction
@@ -459,10 +459,86 @@ desktop or phone app, a chat, SMS. The server holds the list of surfaces it trus
 carry a given human's decisions, each with its own credentials; a decision arrives
 from a surface the server authenticates, never from the requester's client. The
 server MUST record the surface in the decision record's `channel`. A server MAY let
-a human add or remove their own surfaces; 0.2 does not standardise how. The point of
+a human add or remove their own surfaces; 0.3 does not standardise how. How a surface
+talks to the server is the surface API, 7.8. The point of
 the list is that requesters and surfaces multiply independently: a new surface serves
 every requester, and a new requester reaches every surface, with the server between
 them.
+### 7.8 Surface API
+
+The surface API is how a surface (7.7) reaches the server: plain HTTPS and JSON, so a
+phone or desktop app needs no MCP client. It is not part of the MCP binding: requesters
+never use it, and a surface never uses MCP. Paths are relative to a base URL the server
+publishes, ending in `/surface/v1`. Request and response bodies follow the schemas in
+`schemas/surface/`: `task`, `task-list`, `decide.request` and `device`.
+
+**Credentials.** Each surface has its own credential, issued for one human, sent as
+`Authorization: Bearer <credential>`. The server MUST resolve it on every request, as
+R5 requires of requester tokens, so revoking a surface or its human takes effect on the
+next call. A surface credential MUST NOT be accepted where a requester token is
+(`/mcp`), and a requester token MUST NOT be accepted on the surface API; both answer
+`401`. A server MUST refuse a configuration in which a surface credential is also a
+requester token or a credential of another human surface (the decision page's login,
+an administrator's).
+
+**Routing.** A task is routed to the humans whose roles and capabilities include
+everything in its `requires` (5); a task without `requires` is routed to every human
+the server serves. A task not routed to the caller's human MUST NOT be listed, and
+reading or deciding it MUST answer `404`, as for a task that does not exist.
+
+**Resources.**
+
+| Request | Answer |
+| --- | --- |
+| `GET /tasks` | `200`, `{"tasks": [...]}`: the open tasks routed to the human and those decided recently (the server picks the window), newest first. |
+| `GET /tasks/{id}` | `200`, the task view. |
+| `POST /tasks/{id}/decision` | `200`, the decision record (6). |
+| `PUT /devices/{deviceId}` | `200`, the device as stored. |
+| `DELETE /devices/{deviceId}` | `204`; `404` when the surface has no such device. |
+| `GET /events` | `200`, `text/event-stream`. |
+
+Errors carry `{"error": "<message>"}`: `400` for a malformed body or a decision the task
+cannot take, `401` for a missing or refused credential, `404` for an unknown or
+unrouted task, `409` for a task already terminal or a stale `payloadDigest`.
+
+**The task view** keeps the two kinds of provenance (5.1) apart and labelled:
+`attested` carries `"source": "server"` beside the fields the server filled;
+`asserted` carries `"source": "requester"` beside what the requester sent, with
+`lineage` reordered newest first for display (5.3). The view carries `id`,
+`primitive`, `status`, `createdAt`, `deadline` (the effective deadline, after the cap
+and any escalation, 5 and R6), `requiresHuman` (5.4, `false` when absent), `context`
+and `requires` as received; for an Approve `action`, `payload` exactly as received and
+`payloadDigest` (the request's, or the server's own over the payload); for an Ask
+`question`, `responseSchema` and `options`; and `result`, the decision record, once
+the task is terminal. A surface MUST show `attested` and `asserted` as distinct and
+MUST NOT present asserted content as verified.
+
+**Deciding.** An Approve takes `{"outcome": "approve" | "reject", "reason"?,
+"payloadDigest"?}`; when `payloadDigest` is sent and differs from the task's the
+server MUST refuse with `409`, so a human never approves a payload other than the one
+shown. An Ask takes `{"answer", "reason"?}`; the server MUST validate `answer`
+against the Ask's `responseSchema` (and against `options`, when present) and refuse
+an invalid one with `400`. A decision is accepted once: every later decision, from
+any surface, is refused with `409` and leaves the record unchanged. The record has
+`decidedBy` `{"type": "human", "id", "roles"}`, `channel` naming the surface's kind
+(`url` for the decision page of 7.6), and for an Approve `payloadDigest`. Every
+surface, the decision page included, MUST decide through the same checks.
+
+**Devices and push.** A surface MAY register devices for push with
+`PUT /devices/{deviceId}` and `{"platform", "token", "environment"?, "name"?}`
+(`platform` `apns` for Apple Push Notification service, `environment` `production` or
+`sandbox`). For each new task the server SHOULD push once to every device of every
+human the task is routed to, and MUST NOT push again for an R4 repeat or for a task a
+standing rule decided. A push MUST NOT carry the request's content (action, payload,
+question, context, asserted): only a title and the task id, which the surface reads
+with its own credential. A server SHOULD drop a device the push service reports gone.
+
+**Events.** `GET /events` is a server-sent-events stream. For each task routed to the
+human and created after the stream opened, the server sends one event with
+`event: task`, `id` the task id and `data` the task view. The server SHOULD send a
+comment line at least every 30 s to keep intermediaries from closing the stream, and
+MUST re-resolve the credential before each event, ending the stream when it is no
+longer valid.
 
 ## 8. Normative async and security rules
 

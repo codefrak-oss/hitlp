@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/codefrak-oss/hitlp/spec/schemas/surface/device.schema.json",
+  "title": "HITLP surface API device (spec 7.8)",
+  "description": "The body of PUT /devices/{deviceId}; the server answers with it plus id, surfaceId, human and updatedAt.",
+  "type": "object",
+  "required": [
+    "platform",
+    "token"
+  ],
+  "properties": {
+    "platform": {
+      "type": "string",
+      "minLength": 1
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "enum": [
+        "production",
+        "sandbox"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "surfaceId": {
+      "type": "string"
+    },
+    "human": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

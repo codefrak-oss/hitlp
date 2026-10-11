@@ -1,9 +1,18 @@
 // The spec's schemas: the server refuses requests that break them, and its
 // handles and decision records have the shape spec 6 and 7.2 give.
 import { assert, type Test } from "../context";
+import { join } from "node:path";
 import { refused } from "../client";
 
 export const tests: Test[] = [
+  {
+    rule: "schemas",
+    name: "every example in spec/examples, the surface API's included, matches its schema",
+    async run(ctx) {
+      const errors = ctx.schemas.exampleErrors(join(ctx.schemas.dir, "..", "examples"));
+      assert(errors.length === 0, errors.join("; "));
+    },
+  },
   {
     rule: "schemas",
     name: "human.ask and human.approve are listed as tools",
