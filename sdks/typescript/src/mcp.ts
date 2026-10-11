@@ -2,8 +2,8 @@
 // (spec 7.1-7.4). The MCP SDK is an optional peer dependency: only code that
 // imports this module needs it installed.
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { CallToolResultSchema, CreateTaskResultSchema, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { assertCallableTool, type HitlpTool, type TaskTransport } from "./transport";
+import { CallToolResultSchema, CreateTaskResultSchema, McpError, TaskStatusNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import { assertCallableTool, type HitlpTool, type TaskEvent, type TaskTransport } from "./transport";
 import { isTerminal, withMeta, type DecisionRecord, type Task, type TaskStatus } from "./types";
 
 export interface McpTaskTransportOptions {
@@ -11,6 +11,12 @@ export interface McpTaskTransportOptions {
   ttl?: number;
   /** Timeout for each MCP request in milliseconds. */
   timeout?: number;
+  /**
+   * Listen for `notifications/tasks/status` on the session's stream instead of
+   * polling (spec 7.4). Takes over the client's handler for that notification.
+   * Over Streamable HTTP, call `reconnected()` when the stream reconnects. Default false.
+   */
+  notifications?: boolean;
 }
 
 /** The task fields MCP reports (CreateTaskResult.task, GetTaskResult, CancelTaskResult). */
@@ -38,7 +44,29 @@ export class McpTransportError extends Error {
  * the MCP SDK is experimental, so this adapter may need to follow it.
  */
 export class McpTaskTransport implements TaskTransport {
-  constructor(private readonly client: Client, private readonly options: McpTaskTransportOptions = {}) {}
+  private readonly listeners = new Set<(event: TaskEvent) => void>();
+
+  constructor(private readonly client: Client, private readonly options: McpTaskTransportOptions = {}) {
+    if (options.notifications) {
+      client.setNotificationHandler(TaskStatusNotificationSchema, (n) => this.emit({ kind: "status", taskId: n.params.taskId, status: n.params.status }));
+    }
+  }
+
+  /** With `notifications`, reports each status notification and reconnect; otherwise undefined (poll). */
+  watch(listener: (event: TaskEvent) => void): (() => void) | undefined {
+    if (!this.options.notifications) return undefined;
+    this.listeners.add(listener);
+    return () => void this.listeners.delete(listener);
+  }
+
+  /** Tell waiters the stream (re)connected: each reconciles once with `tasks/get` (spec 7.4). */
+  reconnected(): void {
+    this.emit({ kind: "reconnected" });
+  }
+
+  private emit(event: TaskEvent): void {
+    for (const l of this.listeners) l(event);
+  }
 
   async callTool(name: HitlpTool, args: Record<string, unknown>): Promise<Task> {
     assertCallableTool(name);
