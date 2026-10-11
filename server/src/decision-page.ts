@@ -23,6 +23,7 @@ import type { Asserted, Attested } from "@codefrak/hitlp";
 import { assertDisjointCredentials, type AdminAuthenticator, type Authenticator, type HumanAuthenticator, type HumanProfile } from "./auth";
 import { displayedDigest, missingRequirements } from "./routing";
 import { newRule, RuleError, validateRule, type RuleStore } from "./rules";
+import type { SurfaceApi } from "./surface";
 import { DecisionError, NotRoutedError, type HitlpServer } from "./server";
 import { TerminalTaskError, type StoredTask } from "./store";
 
@@ -39,6 +40,8 @@ export interface DecisionPageOptions {
   rules?: RuleStore;
   /** Admins who may manage any human's rules at /rules; startup fails if one shares a credential with an agent or approver. */
   admins?: AdminAuthenticator;
+  /** The surface API (spec 7.8), served under /surface/v1 on the page's origin too. */
+  surface?: SurfaceApi;
 }
 
 const COOKIE = "hitlp_session";
@@ -192,6 +195,7 @@ export class DecisionPage {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (this.options.surface && (await this.options.surface.handle(req, res))) return;
     const url = new URL(req.url ?? "/", "http://page");
     const rules = RULES.exec(url.pathname);
     if (rules) return this.rules(req, res, rules[1]);

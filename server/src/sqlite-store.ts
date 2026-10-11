@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import type { DecisionRecord, TaskStatus } from "@codefrak/hitlp";
 import type { Rule, RuleStore } from "./rules";
-import { DuplicateKeyError, TerminalTaskError, type NewTask, type StoredTask, type TaskStore, type UpdateOptions } from "./store";
+import { DuplicateKeyError, TerminalTaskError, type Device, type NewTask, type SurfaceStore, type StoredTask, type TaskStore, type UpdateOptions } from "./store";
 
 const MIGRATIONS = [
   `CREATE TABLE tasks (
@@ -33,6 +33,14 @@ const MIGRATIONS = [
      seq INTEGER NOT NULL
    );
    CREATE INDEX rules_human ON rules (human, seq)`,
+  `CREATE TABLE devices (
+     surface_id TEXT NOT NULL,
+     id TEXT NOT NULL,
+     human TEXT NOT NULL,
+     device TEXT NOT NULL,
+     PRIMARY KEY (surface_id, id)
+   );
+   CREATE INDEX devices_human ON devices (human)`,
 ];
 
 const OPEN = "status NOT IN ('completed', 'failed', 'cancelled')";
@@ -78,8 +86,8 @@ function fromRow(r: Row): StoredTask {
   return t;
 }
 
-/** A TaskStore, and the standing rules' RuleStore, in one SQLite file (":memory:" only for tests: it is not durable). */
-export class SqliteTaskStore implements TaskStore, RuleStore {
+/** A TaskStore, the standing rules' RuleStore and the surfaces' SurfaceStore, in one SQLite file (":memory:" only for tests: it is not durable). */
+export class SqliteTaskStore implements TaskStore, RuleStore, SurfaceStore {
   private readonly db: Database.Database;
 
   constructor(path: string) {
@@ -153,6 +161,31 @@ export class SqliteTaskStore implements TaskStore, RuleStore {
 
   list(clientId: string): StoredTask[] {
     return (this.db.prepare("SELECT * FROM tasks WHERE client_id = ? ORDER BY created_at, id").all(clientId) as Row[]).map(fromRow);
+  }
+
+  listForSurfaces(decidedSince: string): StoredTask[] {
+    return (
+      this.db.prepare(`SELECT * FROM tasks WHERE ${OPEN} OR updated_at >= ? ORDER BY created_at DESC, id`).all(decidedSince) as Row[]
+    ).map(fromRow);
+  }
+
+  putDevice(device: Device): Device {
+    this.db
+      .prepare("INSERT OR REPLACE INTO devices (surface_id, id, human, device) VALUES (?, ?, ?, ?)")
+      .run(device.surfaceId, device.id, device.human, JSON.stringify(device));
+    return structuredClone(device);
+  }
+
+  deleteDevice(surfaceId: string, id: string): boolean {
+    return this.db.prepare("DELETE FROM devices WHERE surface_id = ? AND id = ?").run(surfaceId, id).changes > 0;
+  }
+
+  devicesFor(human: string): Device[] {
+    return (this.db.prepare("SELECT device FROM devices WHERE human = ? ORDER BY surface_id, id").all(human) as { device: string }[]).map((r) => JSON.parse(r.device) as Device);
+  }
+
+  listDevices(): Device[] {
+    return (this.db.prepare("SELECT device FROM devices ORDER BY surface_id, id").all() as { device: string }[]).map((r) => JSON.parse(r.device) as Device);
   }
 
   saveRule(rule: Rule): Rule {

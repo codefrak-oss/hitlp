@@ -11,3 +11,5 @@ export * from "./attest";
 export * from "./records";
 export * from "./rules";
 export * from "./routing";
+export * from "./surface";
+export * from "./push";
