@@ -2,7 +2,7 @@
 
 A HITLP (human-in-the-loop-protocol) agent on the .NET SDK, [`Codefrak.Hitlp`](../../sdks/dotnet/README.md). See [the demos index](../README.md) for what it does.
 
-Needs the .NET 8 SDK; the SDK is built from `sdks/dotnet` through a project reference. From the repo root:
+Needs the .NET 10 SDK; the SDK is built from `sdks/dotnet` through a project reference. From the repo root:
 
 ```sh
 cd demos/dotnet
@@ -17,7 +17,7 @@ HITLP_DEMO_ANSWERS=Ada,n dotnet run --project Hello   # rejected: nothing is dep
 dotnet test                                           # smoke tests of both paths
 ```
 
-A run looks like this:
+A run looks like this. The `[wire]` lines show the fields of each protocol message: the `human.ask` and `human.approve` arguments the agent sends (envelope plus body, spec section 7.1), the task handle that comes back at once (7.2), the checkpoint the agent stores before yielding (rule R3), and the terminal task with its decision record (7.3). Each JSON block follows its label, indented. The transcript below omits the blocks for brevity:
 
 ```
 [agent] Asking the human for their name (human.ask) ...
