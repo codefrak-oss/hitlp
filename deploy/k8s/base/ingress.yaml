@@ -1,0 +1,31 @@
+# Placeholder host; the overlay replaces it and adds TLS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hitlp-server
+spec:
+  rules:
+    - host: hitlp.example.com
+      http:
+        paths:
+          - path: /mcp
+            pathType: Prefix
+            backend:
+              service:
+                name: hitlp-server
+                port:
+                  name: http
+          - path: /surface
+            pathType: Prefix
+            backend:
+              service:
+                name: hitlp-server
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hitlp-server
+                port:
+                  name: page
