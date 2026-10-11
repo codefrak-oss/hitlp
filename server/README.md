@@ -155,6 +155,18 @@ with its own credential. A device APNs answers 410 for is dropped. Without
 the flags the server logs once and pushes nothing. Other push services plug in
 as a `PushSender` (`src/push.ts`).
 
+Pushover (`src/pushover.ts`), beside APNs or alone: with
+`--pushover-token-file <file>` (the application token) and
+`--pushover-user-file <file>` (the user key) each new task routed to at least
+one approver is sent once as a Pushover message to that user, calling
+Pushover's message API directly. It needs no `--surfaces`. The message carries
+only a title (`Approve: <action>`, the action cut to 60 characters, or
+`Question` for an Ask) and the task id, never the payload, `why` or any other
+request field, and links (`url`/`url_title`) to the task's decision page on
+`--page-url` (no link without it). An Approve is sent at priority 1, or
+`--pushover-priority` (-2..2); an Ask at 0. A Pushover error is logged and
+never fails the task. With only one of the two files nothing is sent.
+
 R3 is the agent's (the SDKs' checkpoints). Without a decision page,
 `HitlpServer.decide` is how a decision is recorded.
 
@@ -212,6 +224,9 @@ secrets.
 | `--apns-key <file.p8>` | for push | APNs signing key. |
 | `--apns-key-id`, `--apns-team-id`, `--apns-bundle-id` | for push | APNs key id, team id and app bundle id. |
 | `--apns-sandbox` | no | Devices that name no environment use the APNs sandbox. |
+| `--pushover-token-file <file>` | for Pushover | File holding the Pushover application token. |
+| `--pushover-user-file <file>` | for Pushover | File holding the Pushover user key. |
+| `--pushover-priority <n>` | no | Priority of an Approve's Pushover message, -2..2 (1). |
 
 ### Container
 
@@ -285,6 +300,11 @@ For push, put the APNs key (the `.p8` file) in the same Secret, so it appears
 under `/etc/hitlp`, and add `--apns-key /etc/hitlp/<key>.p8` and its ids
 (`--apns-key-id`, `--apns-team-id`, `--apns-bundle-id`; see the flags table above) to the `args` value the overlay
 already replaces.
+
+For Pushover, the `hitlp-settings` Secret holds two more files, the
+application token and the user key (say `pushover-token` and `pushover-user`),
+and the overlay adds `--pushover-token-file /etc/hitlp/pushover-token` and
+`--pushover-user-file /etc/hitlp/pushover-user` to the same `args`.
 
 ### Mac (LaunchDaemon)
 
