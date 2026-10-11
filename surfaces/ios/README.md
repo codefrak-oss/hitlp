@@ -18,6 +18,11 @@ Bearer surface credential.
   gets a picker over its `options`, or an input matched to its
   `responseSchema` (string, number, integer, boolean, enum; anything else as
   JSON).
+- Teach the judge (spec 5.5): when the requester offered `teach` options for
+  the decision, the Approve or Reject sheet adds an optional "Teach the judge?"
+  step defaulting to **Just this once**, which teaches nothing; an editable
+  option shows its pattern or reason, prefilled. The choice goes in the same
+  decision. With no options offered, the sheet is as before.
 - Registers for push and opens the task a notification names; the
   notification carries only a title and the task id.
 - Holds two servers (say, the cluster instance and the laptop instance), each

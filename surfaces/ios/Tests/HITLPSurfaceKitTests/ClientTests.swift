@@ -77,6 +77,18 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(body, ["outcome": "approve", "payloadDigest": "sha256:9f2c1e0a"])
     }
 
+    /// Spec 5.5: the teach choice goes in the one decision body, and comes back in the record.
+    func testDecideSendsTheTeachChoice() async throws {
+        let record = Data(#"{"requestId":"task-7f3a","outcome":"approved","decidedBy":{"type":"human","id":"h"},"decidedAt":"2026-10-08T18:10:00Z","teach":{"option":"always-allow","text":"deploy *"}}"#.utf8)
+        StubProtocol.handler = { _ in (200, record) }
+        let client = SurfaceClient(server: server, session: session)
+        let choice = TeachChoice(option: "always-allow", text: "deploy *")
+        let decided = try await client.decide(taskId: "task-7f3a", .approve(reason: nil, payloadDigest: "sha256:9f2c1e0a", teach: choice))
+        XCTAssertEqual(decided.teach, choice)
+        let body = try Examples.object(XCTUnwrap(StubProtocol.requests.last?.httpBody))
+        XCTAssertEqual(body as NSDictionary, ["outcome": "approve", "payloadDigest": "sha256:9f2c1e0a", "teach": ["option": "always-allow", "text": "deploy *"]] as NSDictionary)
+    }
+
     func testBaseURLMustEndInSurfaceV1() {
         let client = SurfaceClient(server: ServerConfig(id: "x", name: "x", baseURL: "https://hitlp.example/", credential: "c"), session: session)
         XCTAssertThrowsError(try client.request("GET", "tasks"))
