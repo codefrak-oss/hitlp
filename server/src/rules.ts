@@ -138,7 +138,10 @@ export function ruleView(request: Record<string, unknown>): Record<string, unkno
 }
 
 /** Whether the rule's human meets the task's `requires`. */
-function qualified(task: StoredTask, human: HumanProfile | undefined): boolean {
+function qualified(task: StoredTask, human: HumanProfile | undefined, known: boolean): boolean {
+  // A rule decides only for a human the server still knows: a revoked
+  // approver's rules go silent, as their decision-page sessions do.
+  if (known && !human) return false;
   const requires = (task.request.requires ?? {}) as { roles?: string[]; capabilities?: string[] };
   if (!requires.roles?.length && !requires.capabilities?.length) return true;
   if (!human) return false;
@@ -154,6 +157,6 @@ export function matchRule(task: StoredTask, rules: Rule[], profile?: (id: string
   if (task.request.requiresHuman === true) return undefined;
   const view = ruleView(task.request);
   return rules.find(
-    (rule) => primitiveOf(rule) === task.primitive && qualified(task, profile?.(rule.human)) && rule.conditions.every((c) => holds(view, c)),
+    (rule) => primitiveOf(rule) === task.primitive && qualified(task, profile?.(rule.human), profile !== undefined) && rule.conditions.every((c) => holds(view, c)),
   );
 }

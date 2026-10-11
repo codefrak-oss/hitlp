@@ -228,4 +228,27 @@ test("R9: a rule sees only attested and the recommendation, and decides only for
   assert.equal(matchRule(requires, [rule]), undefined);
   assert.equal(matchRule(requires, [rule], () => ({ id: "alice", roles: [], capabilities: [] })), undefined);
   assert.equal(matchRule(requires, [rule], () => ({ id: "alice", roles: ["ops"], capabilities: [] }))?.id, rule.id);
+  assert.equal(matchRule(task({}), [rule], () => undefined), undefined);
+});
+
+test("R9: a revoked human's rules go silent: a matching Approve goes to a human instead", async () => {
+  const known = new Set(["alice@example.com"]);
+  const h = await startServer(undefined, {
+    withRules: true,
+    decisionUrl: (id) => `http://page/decide/${id}`,
+    humanProfile: (id) => (known.has(id) ? { id, roles: [], capabilities: [] } : undefined),
+  });
+  try {
+    h.rules.saveRule(aliceRule());
+    const { transport } = await h.connect("token-a");
+    assert.equal((await transport.callTool("human.approve", approveArgs({ asserted }))).status, "completed");
+    known.delete("alice@example.com");
+    const task = await transport.callTool("human.approve", approveArgs({ asserted }));
+    assert.equal(task.status, "input_required");
+    assert.equal(h.server.store.getById(task.taskId)!.result, undefined);
+    assert.equal(h.notified.length, 1);
+  } finally {
+    await h.stop();
+    h.cleanup();
+  }
 });
