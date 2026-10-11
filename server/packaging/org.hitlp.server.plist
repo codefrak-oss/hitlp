@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- install.sh fills @NODE@ and @PAGE_URL@ and writes this to /Library/LaunchDaemons. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.hitlp.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@NODE@</string>
+    <string>/usr/local/lib/hitlp/dist/src/main.js</string>
+    <string>--db</string><string>/var/db/hitlp/tasks.db</string>
+    <string>--http-host</string><string>127.0.0.1</string>
+    <string>--http-port</string><string>8080</string>
+    <string>--page-host</string><string>127.0.0.1</string>
+    <string>--page-port</string><string>8081</string>
+    <string>--page-url</string><string>@PAGE_URL@</string>
+    <string>--tokens</string><string>/usr/local/etc/hitlp/tokens.json</string>
+    <string>--approvers</string><string>/usr/local/etc/hitlp/approvers.json</string>
+    <string>--admins</string><string>/usr/local/etc/hitlp/admins.json</string>
+    <string>--surfaces</string><string>/usr/local/etc/hitlp/surfaces.json</string>
+  </array>
+  <key>UserName</key>
+  <string>_hitlp</string>
+  <key>GroupName</key>
+  <string>_hitlp</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>/var/log/hitlp.log</string>
+  <key>StandardOutPath</key>
+  <string>/var/log/hitlp.log</string>
+</dict>
+</plist>

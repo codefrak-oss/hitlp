@@ -180,17 +180,79 @@ npm run build
 node dist/src/main.js --db hitlp.db --tokens tokens.json
 ```
 
-With `--http-port <n>` (and `--http-host`, default `127.0.0.1`) it serves MCP
-Streamable HTTP at `/mcp` instead of stdio; each request's
-`Authorization: Bearer` token names its client, and a request without one is
-refused. The conformance suite (`../conformance`) runs against that URL.
+Without `--http-port` it serves one client over stdio. With it, it serves MCP
+Streamable HTTP at `/mcp`; each request's `Authorization: Bearer` token names
+its client, and a request without one is refused. The conformance suite
+(`../conformance`) runs against that URL. Over HTTP nothing defaults: the
+server refuses to start without `--tokens`, and without `--page-url` when
+`--approvers` is set, naming the missing setting.
 
-With `--approvers approvers.json` the decision page listens on `--page-port`
-(8080) on `--page-host` (127.0.0.1); `--page-url` is its public base URL, and an
-`https:` one marks the cookie `Secure`. Serve it behind TLS. `--admins
-admins.json` adds rule administrators (it needs `--approvers`). `--surfaces
-surfaces.json` turns on the surface API (it needs `--approvers`; see above).
+### Settings
 
-`tokens.json` maps bearer tokens to client ids (`{"secret": "agent-1"}`); over
-stdio the token comes from `HITLP_TOKEN`. Without `--tokens` one client,
-`local`, is allowed.
+Every setting is a command-line flag, read under that one name; files hold the
+secrets.
+
+| Setting | Required | Meaning |
+| --- | --- | --- |
+| `--db <file>` | no (`hitlp.db`) | The SQLite task store. |
+| `--http-port <n>` | no | Serve MCP over HTTP at `/mcp` (and the surface API) instead of stdio. |
+| `--http-host <h>` | no (`127.0.0.1`) | The MCP listener's address. |
+| `--tokens <file>` | over HTTP | Bearer tokens to client ids, `{"secret": "agent-1"}`. Over stdio without it one client, `local`, is allowed. |
+| `HITLP_TOKEN` (env) | no | Over stdio only: the stdio client's token (default `local`). Not read over HTTP. |
+| `--approvers <file>` | no | Human profiles `[{"credential", "id", "roles", "capabilities"}]`; turns on the decision page. |
+| `--page-url <url>` | over HTTP with `--approvers` | The page's public base URL; an `https:` one marks the cookie `Secure`. Serve it behind TLS. |
+| `--page-port <n>` | no (`8080`) | The decision page's port. |
+| `--page-host <h>` | no (`127.0.0.1`) | The decision page's address. |
+| `--admins <file>` | no | Rule administrators `[{"credential", "id"}]`; needs `--approvers`. |
+| `--surfaces <file>` | no | Surfaces `[{"credential", "id", "human", "kind"}]`; turns on the surface API; needs `--approvers`. |
+| `--surface-recent-hours <h>` | no (`24`) | How long decided tasks stay listed. |
+| `--approve-cap-hours <h>` | no (`24`) | Approve TTL cap (R6). |
+| `--ask-cap-hours <h>` | no (`168`) | Ask TTL cap (R6). |
+| `--allow-blanket-scope` | no | Accept an Approve scope without `notAfter` or `maxUses`. |
+| `--apns-key <file.p8>` | for push | APNs signing key. |
+| `--apns-key-id`, `--apns-team-id`, `--apns-bundle-id` | for push | APNs key id, team id and app bundle id. |
+| `--apns-sandbox` | no | Devices that name no environment use the APNs sandbox. |
+
+### Container
+
+`Dockerfile` builds from the repo root (it builds `sdks/typescript` first) and
+runs the server with every setting as a flag: MCP and the surface API on 8080,
+the decision page on 8081, the settings files read from `/etc/hitlp`
+(`tokens.json`, `approvers.json`, `admins.json`, `surfaces.json`; `admins.json`
+may be `[]`) and the SQLite store at `/var/lib/hitlp/tasks.db`. `--page-url`
+has no default: pass it (and any other flag) after the image name.
+
+```sh
+docker build -f server/Dockerfile -t hitlp-server .
+docker run -p 8080:8080 -p 8081:8081 \
+  -v "$PWD/config:/etc/hitlp:ro" -v hitlp-data:/var/lib/hitlp \
+  hitlp-server --page-url https://hitlp.example.com
+```
+
+The store is SQLite on the mounted volume, so **run a single replica**: two
+servers on one database file would each sweep expiries and hold page sessions
+of their own. On Kubernetes that is `replicas: 1` with `strategy: Recreate`, a
+`ReadWriteOnce` PersistentVolumeClaim mounted at `/var/lib/hitlp`, and the
+settings files from a Secret mounted read-only at `/etc/hitlp`. The image runs
+as the `node` user (uid 1000); give the volume `fsGroup: 1000`. CI builds the
+image on `server/**` changes and pushes nowhere.
+
+### Mac (LaunchDaemon)
+
+```sh
+(cd sdks/typescript && npm ci && npm run build)
+(cd server && npm ci && npm run build)
+sudo server/packaging/install.sh --page-url https://hitlp.example.com
+```
+
+`packaging/install.sh` creates the hidden `_hitlp` service user, copies the
+server to `/usr/local/lib/hitlp`, creates `/usr/local/etc/hitlp/` with
+`tokens.json`, `approvers.json`, `admins.json` and `surfaces.json` (mode 0600,
+owned by `_hitlp`, empty until you fill them in; never overwritten) and
+`/var/db/hitlp/` for the SQLite store, writes
+`/Library/LaunchDaemons/org.hitlp.server.plist` from `packaging/org.hitlp.server.plist`
+and loads it. Both listeners bind `127.0.0.1` (MCP 8080, page 8081); put TLS in
+front of the page. Logs go to `/var/log/hitlp.log`. After editing the settings:
+`sudo launchctl kickstart -k system/org.hitlp.server`.
+`sudo server/packaging/install.sh --uninstall` unloads the daemon and removes
+it and the code; add `--purge` to remove settings, data, the log and the user.

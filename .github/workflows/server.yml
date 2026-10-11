@@ -25,3 +25,31 @@ jobs:
         run: npm ci
       - working-directory: server
         run: npm test
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Built, never pushed: publishing needs a registry secret.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          push: false
+          load: true
+          tags: hitlp-server:ci
+      # Smoke: the image starts and refuses for want of --page-url.
+      - run: |
+          out=$(docker run --rm hitlp-server:ci 2>&1) && exit 1
+          echo "$out"
+          echo "$out" | grep -q -- '--page-url'
+
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n server/packaging/install.sh
+      - run: shellcheck server/packaging/install.sh
+      - run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+      - run: xmllint --noout server/packaging/org.hitlp.server.plist
