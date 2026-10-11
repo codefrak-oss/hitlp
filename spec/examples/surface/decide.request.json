@@ -1,5 +1,9 @@
 {
   "outcome": "approve",
   "reason": "Checked the image tag.",
-  "payloadDigest": "sha256:9f2c1e0a"
+  "payloadDigest": "sha256:9f2c1e0a",
+  "teach": {
+    "option": "always-allow",
+    "text": "deploy release * to production"
+  }
 }

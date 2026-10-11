@@ -48,5 +48,27 @@
     "roles": [
       "approver.production-deploy"
     ]
+  },
+  "teach": {
+    "options": [
+      {
+        "id": "always-allow",
+        "label": "Always allow deploys like this",
+        "after": [
+          "approve"
+        ],
+        "editable": {
+          "label": "Pattern",
+          "default": "deploy release * to production"
+        }
+      },
+      {
+        "id": "never-allow",
+        "label": "Never allow this",
+        "after": [
+          "reject"
+        ]
+      }
+    ]
   }
 }

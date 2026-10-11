@@ -77,6 +77,23 @@
     "payloadDigest": {
       "type": "string"
     },
+    "teach": {
+      "type": "object",
+      "required": [
+        "option"
+      ],
+      "description": "The human's teach choice (spec 5.5, 6): an offered option's id and, when it is editable, the edited text.",
+      "properties": {
+        "option": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "signature": {
       "type": "object",
       "required": [
@@ -185,6 +202,30 @@
                 "const": "policy"
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "teach"
+        ]
+      },
+      "then": {
+        "properties": {
+          "decidedBy": {
+            "properties": {
+              "type": {
+                "const": "human"
+              }
+            }
+          },
+          "outcome": {
+            "enum": [
+              "approved",
+              "rejected"
+            ]
           }
         }
       }
