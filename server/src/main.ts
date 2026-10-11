@@ -3,6 +3,7 @@
 //   [--admins <file.json>] [--page-port <n>] [--approve-cap-hours <h>] [--ask-cap-hours <h>] [--allow-blanket-scope]
 //   [--http-port <n> [--http-host <h>]] [--surfaces <file.json> [--surface-recent-hours <h>]]
 //   [--apns-key <file.p8> --apns-key-id <id> --apns-team-id <id> --apns-bundle-id <id> [--apns-sandbox]]
+//   [--pushover-token-file <file> --pushover-user-file <file> [--pushover-priority <n>]]
 // Over HTTP --tokens is required, and --page-url with --approvers: no default.
 // Serves one client over stdio, or with --http-port any number of clients over
 // MCP Streamable HTTP at /mcp, each request's Authorization bearer token naming
@@ -15,6 +16,7 @@
 // With --surfaces ({credential, id, human, kind} list; `human` is an approver id) the
 // surface API (spec 7.8) answers under /surface/v1 on the MCP listener and the page;
 // with the --apns-* flags new tasks are pushed to the devices surfaces register.
+// With both --pushover-* files, each new task routed to an approver is also sent as a Pushover message.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
@@ -26,6 +28,7 @@ import { assertSurfaceCredentialsDisjoint, StaticAdminAuthenticator, StaticAppro
 import { HOUR } from "./caps";
 import { DecisionPage } from "./decision-page";
 import { pushSenderFor, wirePush } from "./push";
+import { PushoverSender, wirePushover } from "./pushover";
 import { HitlpServer } from "./server";
 import { bearerOf, SurfaceApi } from "./surface";
 import { SqliteTaskStore } from "./sqlite-store";
@@ -51,6 +54,9 @@ const { values } = parseArgs({
     "apns-team-id": { type: "string" },
     "apns-bundle-id": { type: "string" },
     "apns-sandbox": { type: "boolean", default: false },
+    "pushover-token-file": { type: "string" },
+    "pushover-user-file": { type: "string" },
+    "pushover-priority": { type: "string" },
   },
 });
 // Over HTTP nothing defaults: a missing setting stops the server, naming it.
@@ -103,6 +109,19 @@ if (surfaces) {
     sandbox: values["apns-sandbox"],
   });
   wirePush(server, surfaces, store, sender);
+}
+if (values["pushover-token-file"] && values["pushover-user-file"]) {
+  const priority = values["pushover-priority"] === undefined ? undefined : Number(values["pushover-priority"]);
+  if (priority !== undefined && !(Number.isInteger(priority) && priority >= -2 && priority <= 2)) throw new Error("--pushover-priority must be an integer from -2 to 2");
+  const sender = new PushoverSender({
+    token: readFileSync(values["pushover-token-file"], "utf8").trim(),
+    user: readFileSync(values["pushover-user-file"], "utf8").trim(),
+    pageUrl: values["page-url"],
+    approvePriority: priority,
+  });
+  wirePushover(server, sender, humans && (() => [...humans.credentials()].map((c) => humans.resolve(c)!)));
+} else if (values["pushover-token-file"] || values["pushover-user-file"]) {
+  console.error("hitlp: Pushover needs both --pushover-token-file and --pushover-user-file; sending none");
 }
 if (humans) {
   const page = new DecisionPage({ server, humans, agents: auth, admins, rules: store, surface, secureCookie: pageUrl.startsWith("https:") });
