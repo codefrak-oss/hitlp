@@ -84,4 +84,42 @@ export const tests: Test[] = [
       assert(record?.outcome === "approved" && record?.channel === kind, `the record changed after a second decision: ${JSON.stringify(record)}`);
     },
   },
+  {
+    rule: "S",
+    name: "a teach choice the request offered round-trips into the decision record (5.5)",
+    async run(ctx) {
+      const { base, credential } = surface(ctx);
+      const s = await ctx.agent();
+      const teach = { options: [{ id: "always-allow", label: "Always allow this", after: ["approve"], editable: { label: "Pattern", default: "conformance *" } }] };
+      const task = await ctx.call(s, "human.approve", ctx.approve({ teach }));
+      const view = await call(base, `/tasks/${task.taskId}`, credential);
+      ctx.schemas.assert("surface/task", view.json, "the task view");
+      assert(JSON.stringify(view.json!.teach) === JSON.stringify(teach), `the view's teach is not the offered options as sent: ${JSON.stringify(view.json!.teach)}`);
+      const choice = { option: "always-allow", text: "conformance S *" };
+      const decided = await call(base, `/tasks/${task.taskId}/decision`, credential, "POST", { outcome: "approve", teach: choice });
+      assert(decided.status === 200, `the decision answered ${decided.status}: ${JSON.stringify(decided.json)}`);
+      ctx.schemas.assert("decision-record", decided.json, "the surface's decision record");
+      const result = await s.request("tasks/result", { taskId: task.taskId });
+      const record = result.structuredContent;
+      assert(JSON.stringify(record?.teach) === JSON.stringify(choice), `tasks/result's teach is ${JSON.stringify(record?.teach)}, expected ${JSON.stringify(choice)}`);
+    },
+  },
+  {
+    rule: "S",
+    name: "a teach choice the request did not offer is refused with 400 and the task stays open (5.5)",
+    async run(ctx) {
+      const { base, credential } = surface(ctx);
+      const s = await ctx.agent();
+      const task = await ctx.call(s, "human.approve", ctx.approve({ teach: { options: [{ id: "never-allow", label: "Never allow this", after: ["reject"] }] } }));
+      for (const body of [
+        { outcome: "approve", teach: { option: "always-allow" } },
+        { outcome: "approve", teach: { option: "never-allow" } },
+      ]) {
+        const res = await call(base, `/tasks/${task.taskId}/decision`, credential, "POST", body);
+        assert(res.status === 400, `${JSON.stringify(body)} answered ${res.status}, expected 400`);
+      }
+      const got = await ctx.get(s, task.taskId);
+      assert(got.status !== "completed", "the task was decided by a refused teach choice");
+    },
+  },
 ];

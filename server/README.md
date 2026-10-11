@@ -115,6 +115,13 @@ HITLP 0.2 (spec 3.1, 5.1–5.4, 6):
   channel, decision)`: the human must satisfy the task's `requires`, the task
   must be open, an Approve's decision is bound to its `payloadDigest` and an
   Ask's answer must match its `responseSchema` (and be one of its `options`).
+- **Teach options / spec 5.5**: an Approve may offer `teach.options`
+  (ids unique, `once` reserved; refused on an Ask). The task view carries them;
+  a surface API decision may send `teach: {option, text?}`, which must name an
+  offered option whose `after` includes the outcome, with `text` only when the
+  option is `editable` (else `400`, task left open). The choice is stored in
+  the human's record as `teach`; `once` or no choice stores nothing. The
+  server never interprets the options, and the decision page sends no choice.
 
 ## Surface API
 
