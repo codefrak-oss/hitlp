@@ -10,6 +10,13 @@ COPY sdks/typescript sdks/typescript
 RUN cd sdks/typescript && npm ci && npm run build
 COPY server server
 RUN cd server && npm ci && npm run build && npm prune --omit=dev
+# @codefrak/hitlp is a file: link to ../sdks/typescript, which would dangle in /app;
+# replace it with the SDK's packed package and its runtime dependencies.
+RUN cd sdks/typescript && npm pack --pack-destination /tmp \
+ && rm -rf /src/server/node_modules/@codefrak/hitlp \
+ && mkdir -p /src/server/node_modules/@codefrak/hitlp \
+ && tar -xzf /tmp/codefrak-hitlp-*.tgz --strip-components=1 -C /src/server/node_modules/@codefrak/hitlp \
+ && cd /src/server/node_modules/@codefrak/hitlp && npm install --omit=dev --omit=peer --ignore-scripts --no-package-lock
 
 FROM node:22-slim
 WORKDIR /app

@@ -37,6 +37,13 @@ jobs:
           context: .
           file: server/Dockerfile
           push: false
+          load: true
+          tags: hitlp-server:ci
+      # Smoke: the image starts and refuses for want of --page-url.
+      - run: |
+          out=$(docker run --rm hitlp-server:ci 2>&1) && exit 1
+          echo "$out"
+          echo "$out" | grep -q -- '--page-url'
 
   packaging:
     runs-on: ubuntu-latest

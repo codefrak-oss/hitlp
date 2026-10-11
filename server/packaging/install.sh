@@ -91,7 +91,8 @@ do_install() {
   create_user
   install -d -o root -g wheel -m 0755 "$LIB"
   rm -rf "${LIB:?}/dist" "${LIB:?}/node_modules"
-  cp -R "$SERVER/dist" "$SERVER/node_modules" "$SERVER/package.json" "$LIB/"
+  # -L: @codefrak/hitlp is a relative file: link that would dangle under $LIB.
+  cp -RL "$SERVER/dist" "$SERVER/node_modules" "$SERVER/package.json" "$LIB/"
   install -d -o "$SVC" -g "$SVC" -m 0700 "$ETC" "$DATA"
   secret tokens.json '{}'
   secret approvers.json '[]'
