@@ -1,0 +1,52 @@
+{
+  "id": "task-7f3a",
+  "primitive": "approve",
+  "status": "working",
+  "createdAt": "2026-10-08T18:00:02Z",
+  "deadline": "2026-10-08T19:00:00Z",
+  "requiresHuman": false,
+  "attested": {
+    "source": "server",
+    "requester": "release-orchestrator",
+    "onBehalfOf": {
+      "kind": "run",
+      "id": "rel-4821"
+    },
+    "by": "hitlp-server"
+  },
+  "asserted": {
+    "source": "requester",
+    "why": "Ship release 4821 to production.",
+    "recommendation": {
+      "verdict": "allow",
+      "confidence": 0.92,
+      "by": {
+        "judge": "release-judge"
+      },
+      "reasons": [
+        "all checks green"
+      ]
+    },
+    "lineage": [
+      {
+        "kind": "run",
+        "claim": "run rel-4821 started"
+      },
+      {
+        "kind": "ticket",
+        "claim": "issue 4821 approved for release"
+      }
+    ]
+  },
+  "action": "deploy release 4821 to production",
+  "payload": {
+    "service": "api",
+    "image": "api:4821"
+  },
+  "payloadDigest": "sha256:9f2c1e0a",
+  "requires": {
+    "roles": [
+      "approver.production-deploy"
+    ]
+  }
+}

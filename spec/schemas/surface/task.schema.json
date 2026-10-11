@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/codefrak-oss/hitlp/spec/schemas/surface/task.schema.json",
+  "title": "HITLP surface API task view (spec 7.8)",
+  "type": "object",
+  "required": [
+    "id",
+    "primitive",
+    "status",
+    "createdAt",
+    "deadline",
+    "requiresHuman"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "primitive": {
+      "enum": [
+        "ask",
+        "approve"
+      ]
+    },
+    "status": {
+      "enum": [
+        "working",
+        "input_required",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "statusMessage": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The effective deadline: after the cap (R6) and any escalation."
+    },
+    "requiresHuman": {
+      "type": "boolean"
+    },
+    "attested": {
+      "type": "object",
+      "description": "What the server attests (spec 5.1), labelled as the server's.",
+      "required": [
+        "source",
+        "requester",
+        "by"
+      ],
+      "properties": {
+        "source": {
+          "const": "server"
+        },
+        "requester": {
+          "type": "string"
+        },
+        "onBehalfOf": {
+          "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json#/properties/attested/properties/onBehalfOf"
+        },
+        "by": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "asserted": {
+      "type": "object",
+      "description": "What the requester says (spec 5.1), labelled as the requester's; lineage newest first.",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "const": "requester"
+        },
+        "why": {
+          "type": "string"
+        },
+        "onBehalfOf": {
+          "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json#/properties/asserted/properties/onBehalfOf"
+        },
+        "recommendation": {
+          "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json#/properties/asserted/properties/recommendation"
+        },
+        "lineage": {
+          "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json#/properties/asserted/properties/lineage"
+        },
+        "asOf": {
+          "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json#/properties/asserted/properties/asOf"
+        }
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "string"
+    },
+    "payload": {
+      "description": "The Approve's payload exactly as received."
+    },
+    "payloadDigest": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "object"
+    },
+    "question": {
+      "type": "string"
+    },
+    "responseSchema": {
+      "type": [
+        "object",
+        "boolean"
+      ]
+    },
+    "options": {
+      "type": "array"
+    },
+    "context": {
+      "type": "object"
+    },
+    "requires": {
+      "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/envelope.schema.json#/properties/requires"
+    },
+    "result": {
+      "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/decision-record.schema.json"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "primitive": {
+            "const": "approve"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "action",
+          "payload",
+          "payloadDigest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "primitive": {
+            "const": "ask"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "question",
+          "responseSchema"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

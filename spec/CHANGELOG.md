@@ -1,5 +1,30 @@
 # HITLP spec changelog
 
+## 0.3 (draft, 2026-10-11)
+
+Surfaces get a contract: how a decision page, a desktop app or a phone app talks to
+the server.
+
+- **Surface API** (§7.8, pointed to from §7.7): REST and JSON under `/surface/v1`:
+  list a human's tasks, read one, decide it, register a device for push, and a
+  server-sent-events stream of new tasks. No MCP client needed.
+- **Surface credentials**: one per surface, issued for one human, resolved on every
+  request; never accepted on MCP, and a requester token is never accepted on the
+  surface API (both `401`); a server refuses a configuration where one credential
+  opens two doors.
+- **Routing by `requires`**: a task reaches the humans whose roles and capabilities
+  satisfy it; to anyone else it is not listed and not found (`404`).
+- **The task view** labels `attested` as the server's and `asserted` as the
+  requester's, lineage newest first, and carries the payload as received, the
+  effective deadline and `requiresHuman`.
+- **Deciding**: once, through the same checks on every surface (the decision page's
+  included); an Approve is bound to its `payloadDigest`, an Ask's answer is validated
+  against `responseSchema`; the record's `channel` names the surface's kind.
+- **Push**: once per device per new task, never for an R4 repeat or a rule's decision,
+  and never with the request's content.
+- **Schemas** `surface/task`, `surface/task-list`, `surface/decide.request`,
+  `surface/device`, with examples under `examples/surface/`.
+
 ## 0.2 (draft, 2026-10-11)
 
 The human gets a proxy, and the envelope says what is attested and what is asserted.

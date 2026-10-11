@@ -21,10 +21,10 @@ import type { AddressInfo } from "node:net";
 import { isTerminal, type AskOption } from "@codefrak/hitlp";
 import type { Asserted, Attested } from "@codefrak/hitlp";
 import { assertDisjointCredentials, type AdminAuthenticator, type Authenticator, type HumanAuthenticator, type HumanProfile } from "./auth";
-import { requestHash } from "./idempotency";
-import type { RecordFields } from "./records";
+import { displayedDigest, missingRequirements } from "./routing";
 import { newRule, RuleError, validateRule, type RuleStore } from "./rules";
-import type { HitlpServer } from "./server";
+import type { SurfaceApi } from "./surface";
+import { DecisionError, NotRoutedError, type HitlpServer } from "./server";
 import { TerminalTaskError, type StoredTask } from "./store";
 
 export interface DecisionPageOptions {
@@ -40,6 +40,8 @@ export interface DecisionPageOptions {
   rules?: RuleStore;
   /** Admins who may manage any human's rules at /rules; startup fails if one shares a credential with an agent or approver. */
   admins?: AdminAuthenticator;
+  /** The surface API (spec 7.8), served under /surface/v1 on the page's origin too. */
+  surface?: SurfaceApi;
 }
 
 const COOKIE = "hitlp_session";
@@ -53,20 +55,6 @@ interface Session {
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
-
-/** The digest the page binds a decision to: the request's own, or one over the payload shown. */
-export function displayedDigest(task: StoredTask): string {
-  return (task.request.payloadDigest as string | undefined) ?? requestHash(task.request.payload);
-}
-
-/** What the human lacks of the task's `requires`, empty when they may decide. */
-export function missingRequirements(task: StoredTask, human: HumanProfile): string[] {
-  const requires = (task.request.requires ?? {}) as { roles?: string[]; capabilities?: string[] };
-  return [
-    ...(requires.roles ?? []).filter((r) => !human.roles.includes(r)).map((r) => `role ${r}`),
-    ...(requires.capabilities ?? []).filter((c) => !human.capabilities.includes(c)).map((c) => `capability ${c}`),
-  ];
 }
 
 function page(res: ServerResponse, status: number, title: string, body: string, headers: Record<string, string> = {}): void {
@@ -207,6 +195,7 @@ export class DecisionPage {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (this.options.surface && (await this.options.surface.handle(req, res))) return;
     const url = new URL(req.url ?? "/", "http://page");
     const rules = RULES.exec(url.pathname);
     if (rules) return this.rules(req, res, rules[1]);
@@ -360,22 +349,24 @@ export class DecisionPage {
     if (f.get("digest") !== digest) return page(res, 409, "Payload changed", "<p>Reload the page and decide again.</p>");
     const decision = f.get("decision");
     if (decision !== "approve" && decision !== "reject") return page(res, 400, "Bad request", "<p>Choose approve or reject.</p>");
-    const record: RecordFields = {
-      outcome: decision === "approve" ? "approved" : "rejected",
-      decidedBy: { type: "human", id: human.id, roles: [...human.roles] },
-      decidedAt: new Date(this.options.server.now()).toISOString(),
-      channel: "url",
-      payloadDigest: digest,
-    };
-    const reason = f.get("reason");
-    if (reason) record.reason = reason;
+    const outcome = decision === "approve" ? "approved" : "rejected";
+    const reason = f.get("reason") || undefined;
+    if (!this.record(res, () => this.options.server.decideAsHuman(taskId, human, "url", { outcome, reason, payloadDigest: digest }))) return;
+    page(res, 200, "Decision recorded", `<p>${escapeHtml(outcome)} by ${escapeHtml(human.id)}.</p>`);
+  }
+
+  /** Runs the shared decide path (spec 7.8); on a refusal writes the page for it and returns false. */
+  private record(res: ServerResponse, decide: () => StoredTask): boolean {
     try {
-      this.options.server.decide(taskId, record);
+      decide();
+      return true;
     } catch (e) {
-      if (e instanceof TerminalTaskError) return page(res, 409, "Already decided", `<p>This request is ${escapeHtml(e.task.status)}.</p>`);
-      throw e;
+      if (e instanceof TerminalTaskError) page(res, 409, "Already decided", `<p>This request is ${escapeHtml(e.task.status)}.</p>`);
+      else if (e instanceof NotRoutedError) page(res, 403, "Forbidden", "<p>This request is not routed to you.</p>");
+      else if (e instanceof DecisionError) page(res, e.status, e.status === 409 ? "Payload changed" : "Bad request", `<p>${escapeHtml(e.message)}</p>`);
+      else throw e;
+      return false;
     }
-    page(res, 200, "Decision recorded", `<p>${escapeHtml(record.outcome)} by ${escapeHtml(human.id)}.</p>`);
   }
 
   private showAsk(res: ServerResponse, task: StoredTask, sessionId: string, human: HumanProfile): void {
@@ -422,19 +413,7 @@ export class DecisionPage {
         }
       }
     }
-    const record: RecordFields = {
-      outcome: "answered",
-      answer,
-      decidedBy: { type: "human", id: human.id, roles: [...human.roles] },
-      decidedAt: new Date(this.options.server.now()).toISOString(),
-      channel: "url",
-    };
-    try {
-      this.options.server.decide(task.id, record);
-    } catch (e) {
-      if (e instanceof TerminalTaskError) return page(res, 409, "Already decided", `<p>This request is ${escapeHtml(e.task.status)}.</p>`);
-      throw e;
-    }
+    if (!this.record(res, () => this.options.server.decideAsHuman(task.id, human, "url", { answer }))) return;
     page(res, 200, "Answer recorded", `<p>Answered by ${escapeHtml(human.id)}.</p>`);
   }
 }

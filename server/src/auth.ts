@@ -153,6 +153,94 @@ export function assertDisjointCredentials(agents: Authenticator, humans: HumanAu
   }
 }
 
+/** One entry of a --surfaces file: a surface credential issued to one human (spec 7.7, 7.8). */
+export interface SurfaceEntry {
+  credential: string;
+  /** The surface's id, e.g. `alice-iphone`. */
+  id: string;
+  /** The approver id of the human the surface decides for. */
+  human: string;
+  /** What the surface is, e.g. `page`, `desktop`, `phone`: the records' `channel`. */
+  kind: string;
+}
+
+/** The surface a credential names, with its human resolved afresh. */
+export interface SurfaceCaller {
+  surfaceId: string;
+  kind: string;
+  human: HumanProfile;
+}
+
+/**
+ * Authenticates surfaces (spec 7.8) on every request: a credential resolves to
+ * its surface and to its human's current profile, so revoking the surface or the
+ * human ends access at once.
+ */
+export interface SurfaceAuthenticator {
+  /** The surface and its human, or undefined when the credential (or its human) is not, or no longer, valid. */
+  resolve(credential: string | undefined): SurfaceCaller | undefined;
+  /** The surface with this id and its human, when it is still issued. */
+  surface(id: string): SurfaceCaller | undefined;
+  credentials?(): Iterable<string>;
+}
+
+/** Surface credentials from a static list (the --surfaces file); humans' roles and capabilities come from the approvers. */
+export class StaticSurfaceAuthenticator implements SurfaceAuthenticator {
+  private readonly surfaces = new Map<string, SurfaceEntry>();
+
+  constructor(
+    private readonly humans: HumanAuthenticator & { profile(id: string): HumanProfile | undefined },
+    entries: SurfaceEntry[] = [],
+  ) {
+    for (const e of entries) this.grant(e);
+  }
+
+  grant(entry: SurfaceEntry): void {
+    const { credential, id, human, kind } = entry;
+    if (!credential || !id || !human || !kind) throw new Error("a surface needs a credential, an id, a human and a kind");
+    for (const e of this.surfaces.values()) if (e.id === id && e.credential !== credential) throw new Error(`two surfaces are called ${id}`);
+    this.surfaces.set(credential, { credential, id, human, kind });
+  }
+
+  revoke(credential: string): void {
+    this.surfaces.delete(credential);
+  }
+
+  private caller(e: SurfaceEntry | undefined): SurfaceCaller | undefined {
+    const human = e && this.humans.profile(e.human);
+    return human && { surfaceId: e.id, kind: e.kind, human };
+  }
+
+  resolve(credential: string | undefined): SurfaceCaller | undefined {
+    return credential === undefined ? undefined : this.caller(this.surfaces.get(credential));
+  }
+
+  surface(id: string): SurfaceCaller | undefined {
+    for (const e of this.surfaces.values()) if (e.id === id) return this.caller(e);
+    return undefined;
+  }
+
+  credentials(): Iterable<string> {
+    return this.surfaces.keys();
+  }
+}
+
+/**
+ * A surface credential is never a requester token, an approver credential or an
+ * admin credential: each opens one door (spec 7.8). Throws when one is shared.
+ */
+export function assertSurfaceCredentialsDisjoint(surfaces: SurfaceAuthenticator, agents: Authenticator, humans?: HumanAuthenticator, admins?: AdminAuthenticator): void {
+  const others: [string, Iterable<string>][] = [
+    ["a requester token", agents.credentials?.() ?? []],
+    ["an approver credential", humans?.credentials?.() ?? []],
+    ["an admin credential", admins?.credentials?.() ?? []],
+  ];
+  const mine = new Set(surfaces.credentials?.() ?? []);
+  for (const [what, creds] of others) {
+    for (const c of creds) if (mine.has(c)) throw new Error(`refusing to start: a credential is both a surface credential and ${what}`);
+  }
+}
+
 export function tokenOf(authInfo: AuthInfo | undefined, fallback?: string): string | undefined {
   return authInfo?.token ?? fallback;
 }

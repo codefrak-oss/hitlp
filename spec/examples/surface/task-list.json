@@ -1,0 +1,91 @@
+{
+  "tasks": [
+    {
+      "id": "task-7f3a",
+      "primitive": "approve",
+      "status": "working",
+      "createdAt": "2026-10-08T18:00:02Z",
+      "deadline": "2026-10-08T19:00:00Z",
+      "requiresHuman": false,
+      "attested": {
+        "source": "server",
+        "requester": "release-orchestrator",
+        "onBehalfOf": {
+          "kind": "run",
+          "id": "rel-4821"
+        },
+        "by": "hitlp-server"
+      },
+      "asserted": {
+        "source": "requester",
+        "why": "Ship release 4821 to production.",
+        "recommendation": {
+          "verdict": "allow",
+          "confidence": 0.92,
+          "by": {
+            "judge": "release-judge"
+          },
+          "reasons": [
+            "all checks green"
+          ]
+        },
+        "lineage": [
+          {
+            "kind": "run",
+            "claim": "run rel-4821 started"
+          },
+          {
+            "kind": "ticket",
+            "claim": "issue 4821 approved for release"
+          }
+        ]
+      },
+      "action": "deploy release 4821 to production",
+      "payload": {
+        "service": "api",
+        "image": "api:4821"
+      },
+      "payloadDigest": "sha256:9f2c1e0a",
+      "requires": {
+        "roles": [
+          "approver.production-deploy"
+        ]
+      }
+    },
+    {
+      "id": "task-81b0",
+      "primitive": "ask",
+      "status": "completed",
+      "createdAt": "2026-10-08T17:00:00Z",
+      "deadline": "2026-10-08T19:00:00Z",
+      "requiresHuman": true,
+      "attested": {
+        "source": "server",
+        "requester": "billing-agent",
+        "by": "hitlp-server"
+      },
+      "question": "Which currency?",
+      "responseSchema": {
+        "type": "string"
+      },
+      "result": {
+        "requestId": "task-81b0",
+        "idempotencyKey": "inv-77-currency",
+        "primitive": "ask",
+        "outcome": "answered",
+        "answer": "EUR",
+        "decidedBy": {
+          "type": "human",
+          "id": "h-102",
+          "roles": []
+        },
+        "decidedAt": "2026-10-08T17:05:00Z",
+        "channel": "phone",
+        "attested": {
+          "requester": "billing-agent",
+          "by": "hitlp-server"
+        }
+      }
+    }
+  ]
+}

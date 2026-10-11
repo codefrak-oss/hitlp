@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // hitlp-server --db <file> [--tokens <file.json>] [--approvers <file.json> --page-url <url>]
 //   [--admins <file.json>] [--page-port <n>] [--approve-cap-hours <h>] [--ask-cap-hours <h>] [--allow-blanket-scope]
-//   [--http-port <n> [--http-host <h>]]
+//   [--http-port <n> [--http-host <h>]] [--surfaces <file.json> [--surface-recent-hours <h>]]
+//   [--apns-key <file.p8> --apns-key-id <id> --apns-team-id <id> --apns-bundle-id <id> [--apns-sandbox]]
 // Serves one client over stdio, or with --http-port any number of clients over
 // MCP Streamable HTTP at /mcp, each request's Authorization bearer token naming
 // its client (R5). The tokens file maps bearer tokens to client ids;
@@ -10,6 +11,9 @@
 // base URL. The approvers file is a list of {credential, id, roles, capabilities}.
 // The page also serves /rules, where an approver manages their own standing rules
 // (proxy layer 1) and an admin from the --admins file ({credential, id} list) anyone's.
+// With --surfaces ({credential, id, human, kind} list; `human` is an approver id) the
+// surface API (spec 7.8) answers under /surface/v1 on the MCP listener and the page;
+// with the --apns-* flags new tasks are pushed to the devices surfaces register.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
@@ -17,10 +21,12 @@ import { parseArgs } from "node:util";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { StaticAdminAuthenticator, StaticApproverAuthenticator, StaticTokenAuthenticator } from "./auth";
+import { assertSurfaceCredentialsDisjoint, StaticAdminAuthenticator, StaticApproverAuthenticator, StaticSurfaceAuthenticator, StaticTokenAuthenticator } from "./auth";
 import { HOUR } from "./caps";
 import { DecisionPage } from "./decision-page";
+import { pushSenderFor, wirePush } from "./push";
 import { HitlpServer } from "./server";
+import { bearerOf, SurfaceApi } from "./surface";
 import { SqliteTaskStore } from "./sqlite-store";
 
 const { values } = parseArgs({
@@ -37,6 +43,13 @@ const { values } = parseArgs({
     "allow-blanket-scope": { type: "boolean", default: false },
     "http-port": { type: "string" },
     "http-host": { type: "string", default: "127.0.0.1" },
+    surfaces: { type: "string" },
+    "surface-recent-hours": { type: "string", default: "24" },
+    "apns-key": { type: "string" },
+    "apns-key-id": { type: "string" },
+    "apns-team-id": { type: "string" },
+    "apns-bundle-id": { type: "string" },
+    "apns-sandbox": { type: "boolean", default: false },
   },
 });
 const tokens: Record<string, string> = values.tokens ? JSON.parse(readFileSync(values.tokens, "utf8")) : { local: "local" };
@@ -65,8 +78,22 @@ const server = new HitlpServer({
     if (humans && t.primitive === "ask") console.error(`hitlp: answer at ${pageUrl}/decide/${t.id}`);
   },
 });
+if (values.surfaces && !humans) throw new Error("--surfaces needs --approvers: a surface's human is an approver");
+const surfaces = humans && values.surfaces ? new StaticSurfaceAuthenticator(humans, JSON.parse(readFileSync(values.surfaces, "utf8"))) : undefined;
+if (surfaces) assertSurfaceCredentialsDisjoint(surfaces, auth, humans, admins);
+const surface = surfaces && new SurfaceApi({ server, surfaces, store, recentMs: hours(values["surface-recent-hours"]) });
+if (surfaces) {
+  const sender = pushSenderFor({
+    key: values["apns-key"] && readFileSync(values["apns-key"], "utf8"),
+    keyId: values["apns-key-id"],
+    teamId: values["apns-team-id"],
+    bundleId: values["apns-bundle-id"],
+    sandbox: values["apns-sandbox"],
+  });
+  wirePush(server, surfaces, store, sender);
+}
 if (humans) {
-  const page = new DecisionPage({ server, humans, agents: auth, admins, rules: store, secureCookie: pageUrl.startsWith("https:") });
+  const page = new DecisionPage({ server, humans, agents: auth, admins, rules: store, surface, secureCookie: pageUrl.startsWith("https:") });
   void page.listen(port, values["page-host"]).then((url) => console.error(`hitlp: decision page on ${url}`));
 }
 if (values["http-port"] === undefined) {
@@ -76,11 +103,17 @@ if (values["http-port"] === undefined) {
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   const http = createServer(async (req: IncomingMessage & { auth?: AuthInfo }, res) => {
     try {
+      if (surface && (await surface.handle(req, res))) return;
       if (new URL(req.url ?? "/", "http://mcp").pathname !== "/mcp") {
         res.writeHead(404).end();
         return;
       }
-      const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization ?? "")?.[1];
+      const bearer = bearerOf(req);
+      // A surface credential opens the surface API only (spec 7.8).
+      if (surface?.isSurfaceCredential(bearer)) {
+        res.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "a surface credential is not a requester token" }));
+        return;
+      }
       if (bearer) req.auth = { token: bearer, clientId: "", scopes: [] };
       const sid = req.headers["mcp-session-id"];
       let transport = typeof sid === "string" ? sessions.get(sid) : undefined;

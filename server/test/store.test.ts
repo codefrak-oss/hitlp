@@ -48,3 +48,33 @@ test("SqliteTaskStore update is compare-and-set on terminal tasks, and lists ove
     s.close();
   }
 });
+
+test("SqliteTaskStore keeps surface devices across a reopen, and lists open and recently decided tasks", async () => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "hitlp-devices-"));
+  const path = join(dir, "s.db");
+  try {
+    let s = new SqliteTaskStore(path);
+    const d = { id: "d1", surfaceId: "alice-phone", human: "h-alice", platform: "apns", token: "abc", environment: "sandbox", updatedAt: new Date(0).toISOString() };
+    s.putDevice(d);
+    s.putDevice({ ...d, id: "d2", surfaceId: "bob-phone", human: "h-bob" });
+    s.putDevice({ ...d, token: "def" });
+    s.create({ ...base, id: "t1" });
+    s.create({ ...base, id: "t2", idempotencyKey: "k2" });
+    s.update("t2", "completed", { result: { requestId: "t2" } as never });
+    s.close();
+    s = new SqliteTaskStore(path);
+    assert.deepEqual(s.devicesFor("h-alice"), [{ ...d, token: "def" }]);
+    assert.equal(s.listDevices().length, 2);
+    assert.deepEqual(s.listForSurfaces(new Date(0).toISOString()).map((t) => t.id).sort(), ["t1", "t2"]);
+    assert.deepEqual(s.listForSurfaces("9999-01-01T00:00:00Z").map((t) => t.id), ["t1"]);
+    assert.equal(s.deleteDevice("alice-phone", "d1"), true);
+    assert.equal(s.deleteDevice("alice-phone", "d1"), false);
+    assert.deepEqual(s.devicesFor("h-alice"), []);
+    s.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

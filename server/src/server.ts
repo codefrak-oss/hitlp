@@ -27,6 +27,31 @@ import { buildRecord, type RecordFields } from "./records";
 import { matchRule, type RuleStore } from "./rules";
 import { TerminalTaskError, type StoredTask, type TaskStore } from "./store";
 import { createHumanTask, TOOLS } from "./tools";
+import { answerErrors, displayedDigest, routedTo } from "./routing";
+
+/** A human's decision as a surface sends it: an Approve's outcome, or an Ask's answer. */
+export type HumanDecision =
+  | { outcome: "approved" | "rejected"; reason?: string; payloadDigest?: string }
+  | { answer: unknown; reason?: string };
+
+/** The task does not exist or is not routed to this human: either way, not found (spec 7.8). */
+export class NotRoutedError extends Error {
+  constructor(readonly taskId: string) {
+    super(`Task not found: ${taskId}`);
+    this.name = "NotRoutedError";
+  }
+}
+
+/** A decision the task cannot take; `status` is the HTTP status a surface answers. */
+export class DecisionError extends Error {
+  constructor(
+    readonly status: 400 | 409,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DecisionError";
+  }
+}
 
 export interface HitlpServerOptions {
   store: TaskStore;
@@ -74,6 +99,7 @@ function resultOf(t: StoredTask) {
 
 export class HitlpServer {
   private readonly servers = new Set<McpServer>();
+  private readonly listeners = new Set<(task: StoredTask) => void>();
   private readonly timer?: NodeJS.Timeout;
   readonly now: () => number;
   private readonly expiry: ExpiryOptions;
@@ -119,6 +145,65 @@ export class HitlpServer {
    * request's `attested` and `recommendation` (spec 6). A decision after the
    * deadline, or on a decided task, is refused.
    */
+  /**
+   * Records a human's decision from a surface (spec 7.7, 7.8): the decision page
+   * passes channel `url`, the surface API the surface's kind. The one path every
+   * human decision takes: the human must satisfy the task's `requires`
+   * (NotRoutedError), the task must be open (TerminalTaskError), an Approve takes
+   * approved or rejected bound to the payload's digest, an Ask an answer valid
+   * against its `responseSchema` (DecisionError). The record names the human,
+   * their roles and the channel.
+   */
+  decideAsHuman(taskId: string, human: HumanProfile, channel: string, decision: HumanDecision): StoredTask {
+    const task = this.getTask(taskId);
+    if (!task || !routedTo(task, human)) throw new NotRoutedError(taskId);
+    if (isTerminal(task.status)) throw new TerminalTaskError(task);
+    const base = {
+      decidedBy: { type: "human" as const, id: human.id, roles: [...human.roles] },
+      decidedAt: new Date(this.now()).toISOString(),
+      channel,
+    };
+    let fields: RecordFields;
+    if (task.primitive === "approve") {
+      if (!("outcome" in decision) || (decision.outcome !== "approved" && decision.outcome !== "rejected")) {
+        throw new DecisionError(400, "an Approve takes outcome approved or rejected");
+      }
+      const digest = displayedDigest(task);
+      if (decision.payloadDigest !== undefined && decision.payloadDigest !== digest) {
+        throw new DecisionError(409, "the payload digest does not match the task's: reload and decide again");
+      }
+      fields = { outcome: decision.outcome, ...base, payloadDigest: digest };
+    } else {
+      if (!("answer" in decision) || decision.answer === undefined) throw new DecisionError(400, "an Ask takes an answer");
+      const options = (task.request.options ?? []) as { value: unknown }[];
+      if (options.length > 0 && !options.some((o) => JSON.stringify(o.value) === JSON.stringify(decision.answer))) {
+        throw new DecisionError(400, "the answer is not one of the options");
+      }
+      const errors = answerErrors(task, decision.answer);
+      if (errors.length > 0) throw new DecisionError(400, `the answer does not match the responseSchema: ${errors.join("; ")}`);
+      fields = { outcome: "answered", answer: structuredClone(decision.answer), ...base };
+    }
+    if (decision.reason) fields.reason = decision.reason;
+    return this.store.update(taskId, "completed", { result: buildRecord(task, fields), statusMessage: "Decided." });
+  }
+
+  /** Calls `listener` with each new task routed to humans (never an R4 repeat or a rule's decision); returns the unsubscribe. */
+  onNewTask(listener: (task: StoredTask) => void): () => void {
+    this.listeners.add(listener);
+    return () => void this.listeners.delete(listener);
+  }
+
+  private async announce(task: StoredTask): Promise<void> {
+    for (const l of this.listeners) {
+      try {
+        l(task);
+      } catch (e) {
+        console.error(`hitlp: a new-task listener failed: ${(e as Error).message}`);
+      }
+    }
+    await this.options.notify?.(task);
+  }
+
   decide(taskId: string, decision: RecordFields & Partial<Pick<DecisionRecord, "idempotencyKey" | "primitive">>): StoredTask {
     // The task, not the caller, supplies the key, primitive, attested and recommendation.
     const { idempotencyKey: _k, primitive: _p, attested: _a, recommendation: _r, ...fields } = decision as DecisionRecord;
@@ -215,7 +300,7 @@ export class HitlpServer {
         allowBlanketScope: this.options.allowBlanketScope ?? false,
         decisionUrl: this.options.decisionUrl,
         rule: (t) => (this.options.rules ? matchRule(t, this.options.rules.listRules(), this.options.humanProfile) : undefined),
-        notify: this.options.notify ?? (() => {}),
+        notify: (t) => this.announce(t),
       });
       return { task: toMcpTask(task) } as never;
     });

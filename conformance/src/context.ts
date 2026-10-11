@@ -20,6 +20,12 @@ export interface Config {
    * credential that manages `human`'s rules there (the human's own or an admin's).
    */
   rules: { path?: string; credential: string; human: string };
+  /**
+   * The surface API (spec 7.8, group S): its path on the MCP URL's origin (default
+   * `/surface/v1`), a surface credential of a human who may decide an Approve with no
+   * `requires`, and the surface's kind, which records carry as `channel`.
+   */
+  surface?: { path?: string; credential: string; kind: string };
 }
 
 export const TERMINAL = ["completed", "failed", "cancelled"];

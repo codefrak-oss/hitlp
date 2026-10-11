@@ -1,0 +1,6 @@
+{
+  "platform": "apns",
+  "token": "7b1c3e9fd0a54c2e8a6b",
+  "environment": "production",
+  "name": "Alice's iPhone"
+}

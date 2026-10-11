@@ -65,7 +65,39 @@ export interface TaskStore {
    */
   update(id: string, status: TaskStatus, opts?: UpdateOptions): StoredTask;
   list(clientId: string): StoredTask[];
+  /** Every open task, and every task that reached a terminal status at or after `decidedSince` (ISO-8601), newest first. */
+  listForSurfaces(decidedSince: string): StoredTask[];
   /** Open (non-terminal) tasks whose effective or final deadline is at or before `now`. */
   listOpenExpiring(now: number): StoredTask[];
   close(): void;
+}
+
+/** A device a surface registered for push (spec 7.8). */
+export interface Device {
+  /** The device id the surface chose; unique per surface. */
+  id: string;
+  /** The surface that registered it. */
+  surfaceId: string;
+  /** The human it belongs to. */
+  human: string;
+  /** The push service, e.g. `apns`. */
+  platform: string;
+  /** The push service's token for the device. */
+  token: string;
+  /** For APNs: `production` or `sandbox`. */
+  environment?: string;
+  name?: string;
+  updatedAt: string;
+}
+
+/** The surfaces' own state: the devices they registered for push. */
+export interface SurfaceStore {
+  /** Inserts or replaces the device (surfaceId, id). */
+  putDevice(device: Device): Device;
+  /** Removes the device; false when there was none. */
+  deleteDevice(surfaceId: string, id: string): boolean;
+  /** One human's devices, across their surfaces. */
+  devicesFor(human: string): Device[];
+  /** Every device. */
+  listDevices(): Device[];
 }

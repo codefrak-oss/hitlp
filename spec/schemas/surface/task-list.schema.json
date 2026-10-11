@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/codefrak-oss/hitlp/spec/schemas/surface/task-list.schema.json",
+  "title": "HITLP surface API task list (spec 7.8)",
+  "type": "object",
+  "required": [
+    "tasks"
+  ],
+  "properties": {
+    "tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "task.schema.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}
