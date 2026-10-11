@@ -33,6 +33,15 @@ export interface CreateOptions {
   notify: (task: StoredTask) => void | Promise<void>;
 }
 
+/** Spec 5.5: teach options are an Approve's, with ids unique and `once` reserved (the schema refuses it). */
+function checkTeach(primitive: Primitive, args: Record<string, unknown>): void {
+  if (args.teach === undefined) return;
+  if (primitive !== "approve") throw new McpError(ErrorCode.InvalidParams, "teach is offered on an Approve only");
+  const ids = ((args.teach as { options: { id: string }[] }).options ?? []).map((o) => o.id);
+  const twice = ids.find((id, i) => ids.indexOf(id) !== i);
+  if (twice !== undefined) throw new McpError(ErrorCode.InvalidParams, `teach offers the option ${twice} twice`);
+}
+
 export async function createHumanTask(
   store: TaskStore,
   caller: Caller,
@@ -49,6 +58,7 @@ export async function createHumanTask(
   const check = validate(`${primitive}.request`, args);
   if (!check.valid) throw new McpError(ErrorCode.InvalidParams, `invalid ${tool} request: ${check.errors.join("; ")}`);
   checkScope(primitive, args, opts.allowBlanketScope);
+  checkTeach(primitive, args);
   const key = args.idempotencyKey as string;
   const hash = requestHash({ tool, args });
   const deadlineAt = effectiveDeadline(primitive, args.deadline as string, opts.now, opts.caps, opts.ttl);

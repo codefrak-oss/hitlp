@@ -22,6 +22,13 @@ the server.
   against `responseSchema`; the record's `channel` names the surface's kind.
 - **Push**: once per device per new task, never for an R4 repeat or a rule's decision,
   and never with the request's content.
+- **Teach options** (§5.5): an Approve may offer `teach` follow-ups ("always allow
+  commands like this", "never allow this"); a surface shows them after Approve or
+  Reject beside "just this once", the default that teaches nothing, and sends the
+  choice in the same decision. The record's new `teach` field `{option, text?}`
+  carries the human's choice, only on human decisions, signed with the rest; the
+  server validates it against the offered options and never interprets it. Additive:
+  requests, records and surfaces without it are unchanged.
 - **Schemas** `surface/task`, `surface/task-list`, `surface/decide.request`,
   `surface/device`, with examples under `examples/surface/`.
 

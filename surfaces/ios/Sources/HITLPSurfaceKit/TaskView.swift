@@ -27,6 +27,8 @@ public struct TaskView: Codable, Identifiable, Equatable, Sendable {
     public var context: JSONValue?
     public var requires: Requires?
     public var result: DecisionRecord?
+    /// The follow-ups the requester offers after Approve or Reject (spec 5.5); nil when none.
+    public var teach: Teach?
 
     /// The `payload` member's text exactly as the server sent it; set by
     /// `TaskView.decode(_:)`, nil when decoded otherwise or without a payload.
@@ -34,7 +36,7 @@ public struct TaskView: Codable, Identifiable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, primitive, status, statusMessage, createdAt, deadline, requiresHuman, attested, asserted
-        case action, payload, payloadDigest, scope, question, responseSchema, options, context, requires, result
+        case action, payload, payloadDigest, scope, question, responseSchema, options, context, requires, result, teach
     }
 
     public init(from decoder: Decoder) throws {
@@ -59,6 +61,14 @@ public struct TaskView: Codable, Identifiable, Equatable, Sendable {
         context = try c.decodeIfPresent(JSONValue.self, forKey: .context)
         requires = try c.decodeIfPresent(Requires.self, forKey: .requires)
         result = try c.decodeIfPresent(DecisionRecord.self, forKey: .result)
+        teach = try c.decodeIfPresent(Teach.self, forKey: .teach)
+    }
+
+    /// The teach options to show after `outcome` (spec 5.5): those whose `after` names it.
+    /// Empty means no teach step: the decision is sent as it always was.
+    public func teachOptions(after outcome: TeachOption.After) -> [TeachOption] {
+        guard primitive == .approve else { return [] }
+        return teach?.options.filter { $0.after.contains(outcome) } ?? []
     }
 
     /// Decodes one task view and keeps its payload's text as received.
@@ -133,6 +143,24 @@ public struct Requires: Codable, Equatable, Sendable {
     public var capabilities: [String]?
 }
 
+/// The teach options an Approve offers (spec 5.5). Carried, never interpreted.
+public struct Teach: Codable, Equatable, Sendable {
+    public var options: [TeachOption]
+}
+
+public struct TeachOption: Codable, Equatable, Identifiable, Sendable {
+    public enum After: String, Codable, Sendable { case approve, reject }
+    public struct Editable: Codable, Equatable, Sendable {
+        public var label: String
+        public var `default`: String?
+    }
+    public var id: String
+    public var label: String
+    public var after: [After]
+    /// Set when the option takes a text the human may edit (a pattern, a reason).
+    public var editable: Editable?
+}
+
 /// The decision record (spec 6) a decided task carries and a decision answers.
 public struct DecisionRecord: Codable, Equatable, Sendable {
     public struct DecidedBy: Codable, Equatable, Sendable {
@@ -149,6 +177,8 @@ public struct DecisionRecord: Codable, Equatable, Sendable {
     public var decidedAt: String
     public var channel: String?
     public var payloadDigest: String?
+    /// The human's teach choice (spec 5.5), when they chose one.
+    public var teach: TeachChoice?
 }
 
 public enum SurfaceDates {

@@ -21,6 +21,19 @@ final class ExampleTests: XCTestCase {
         XCTAssertEqual(task.payloadDigest, "sha256:9f2c1e0a")
         XCTAssertEqual(task.requires?.roles, ["approver.production-deploy"])
         XCTAssertEqual(task.payload, .object(["service": .string("api"), "image": .string("api:4821")]))
+        XCTAssertEqual(task.teach?.options.map(\.id), ["always-allow", "never-allow"])
+        XCTAssertEqual(task.teachOptions(after: .approve).map(\.id), ["always-allow"])
+        XCTAssertEqual(task.teachOptions(after: .reject).map(\.id), ["never-allow"])
+        XCTAssertEqual(task.teachOptions(after: .approve).first?.editable?.default, "deploy release * to production")
+    }
+
+    /// Spec 5.5: a task without teach options has no teach step.
+    func testNoTeachOptionsMeansNoTeachStep() throws {
+        let list = try TaskList.decode(Examples.data("task-list.json"))
+        for task in list.tasks where task.teach == nil {
+            XCTAssertTrue(task.teachOptions(after: .approve).isEmpty)
+            XCTAssertTrue(task.teachOptions(after: .reject).isEmpty)
+        }
     }
 
     func testTaskPayloadTextIsExactlyAsReceived() throws {
@@ -56,7 +69,9 @@ final class ExampleTests: XCTestCase {
     func testDecideRequestExample() throws {
         let data = try Examples.data("decide.request.json")
         let example = try Examples.object(data)
-        let decision = Decision.approve(reason: example["reason"] as? String, payloadDigest: example["payloadDigest"] as? String)
+        let teach = try XCTUnwrap(example["teach"] as? [String: String])
+        let decision = Decision.approve(reason: example["reason"] as? String, payloadDigest: example["payloadDigest"] as? String,
+                                        teach: TeachChoice(option: teach["option"]!, text: teach["text"]))
         XCTAssertEqual(try Examples.object(JSONEncoder().encode(decision)), example)
     }
 
@@ -77,6 +92,15 @@ final class ExampleTests: XCTestCase {
         XCTAssertEqual(reject, ["outcome": "reject", "reason": "wrong tag", "payloadDigest": "sha256:1"])
         let bare = try Examples.object(JSONEncoder().encode(Decision.approve(reason: "  ", payloadDigest: nil)))
         XCTAssertEqual(bare, ["outcome": "approve"])
+        // Teach (spec 5.5): just this once sends nothing; a non-editable option sends no text.
+        let once = try Examples.object(JSONEncoder().encode(Decision.approve(reason: nil, payloadDigest: nil, teach: TeachChoice.choosing(nil, text: "x"))))
+        XCTAssertEqual(once, ["outcome": "approve"])
+        let never = TeachOption(id: "never-allow", label: "Never allow this", after: [.reject])
+        let taught = try Examples.object(JSONEncoder().encode(Decision.reject(reason: "no", payloadDigest: nil, teach: TeachChoice.choosing(never, text: "ignored"))))
+        XCTAssertEqual(taught as NSDictionary, ["outcome": "reject", "reason": "no", "teach": ["option": "never-allow"]] as NSDictionary)
+        let always = TeachOption(id: "always-allow", label: "Always", after: [.approve], editable: .init(label: "Pattern", default: "ls *"))
+        let edited = try Examples.object(JSONEncoder().encode(Decision.approve(reason: nil, payloadDigest: nil, teach: TeachChoice.choosing(always, text: "ls -la *"))))
+        XCTAssertEqual(edited as NSDictionary, ["outcome": "approve", "teach": ["option": "always-allow", "text": "ls -la *"]] as NSDictionary)
         let answer = try Examples.object(JSONEncoder().encode(Decision.answer(.number(3), reason: nil)))
         XCTAssertEqual(answer, ["answer": 3])
         let withReason = try Examples.object(JSONEncoder().encode(Decision.answer(.string("EUR"), reason: "invoice")))

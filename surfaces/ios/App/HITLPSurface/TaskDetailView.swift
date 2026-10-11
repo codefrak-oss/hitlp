@@ -65,6 +65,9 @@ struct TaskDetailView: View {
                 if let reason = result.reason { LabeledContent("Reason", value: reason) }
                 LabeledContent("By", value: [result.decidedBy.type, result.decidedBy.id].compactMap { $0 }.joined(separator: " "))
                 if let channel = result.channel { LabeledContent("Channel", value: channel) }
+                if let teach = result.teach {
+                    LabeledContent("Taught", value: [task.teach?.options.first { $0.id == teach.option }?.label ?? teach.option, teach.text].compactMap { $0 }.joined(separator: ": "))
+                }
                 LabeledContent("At", value: result.decidedAt)
             }
         } else if task.status.isOpen {

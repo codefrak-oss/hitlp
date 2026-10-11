@@ -23,7 +23,7 @@ import type { Caller } from "./attest";
 import { tokenOf, type Authenticator, type HumanProfile } from "./auth";
 import { DEFAULT_CAPS, HOUR, type TtlCaps } from "./caps";
 import { expireIfDue, sweepExpired, type ExpiryOptions } from "./expiry";
-import { buildRecord, type RecordFields } from "./records";
+import { buildRecord, offeredTeach, type RecordFields, type TeachChoice } from "./records";
 import { matchRule, type RuleStore } from "./rules";
 import { TerminalTaskError, type StoredTask, type TaskStore } from "./store";
 import { createHumanTask, TOOLS } from "./tools";
@@ -31,8 +31,26 @@ import { answerErrors, displayedDigest, routedTo } from "./routing";
 
 /** A human's decision as a surface sends it: an Approve's outcome, or an Ask's answer. */
 export type HumanDecision =
-  | { outcome: "approved" | "rejected"; reason?: string; payloadDigest?: string }
+  | { outcome: "approved" | "rejected"; reason?: string; payloadDigest?: string; teach?: TeachChoice }
   | { answer: unknown; reason?: string };
+
+/**
+ * The teach choice to record (spec 5.5): an offered option whose `after` names the
+ * outcome, `text` only on an editable one; `once` or none records nothing.
+ */
+function teachChoice(task: StoredTask, outcome: "approved" | "rejected", choice: TeachChoice | undefined): TeachChoice | undefined {
+  if (!choice || choice.option === "once") {
+    if (choice?.text !== undefined) throw new DecisionError(400, "just this once takes no text");
+    return undefined;
+  }
+  const offered = offeredTeach(task).find((o) => o.id === choice.option);
+  if (!offered) throw new DecisionError(400, `the teach option ${choice.option} was not offered`);
+  if (!offered.after.includes(outcome === "approved" ? "approve" : "reject")) {
+    throw new DecisionError(400, `the teach option ${choice.option} is not offered after ${outcome === "approved" ? "approve" : "reject"}`);
+  }
+  if (choice.text !== undefined && !offered.editable) throw new DecisionError(400, `the teach option ${choice.option} takes no text`);
+  return choice.text !== undefined ? { option: choice.option, text: choice.text } : { option: choice.option };
+}
 
 /** The task does not exist or is not routed to this human: either way, not found (spec 7.8). */
 export class NotRoutedError extends Error {
@@ -172,8 +190,12 @@ export class HitlpServer {
       if (decision.payloadDigest !== undefined && decision.payloadDigest !== digest) {
         throw new DecisionError(409, "the payload digest does not match the task's: reload and decide again");
       }
+      const teach = teachChoice(task, decision.outcome, decision.teach);
       fields = { outcome: decision.outcome, ...base, payloadDigest: digest };
+      // The choice is the human's and part of the record, signed with the rest (spec 5.5, 6).
+      if (teach) (fields as RecordFields & { teach?: TeachChoice }).teach = teach;
     } else {
+      if ("teach" in decision && decision.teach !== undefined) throw new DecisionError(400, "an Ask takes no teach choice");
       if (!("answer" in decision) || decision.answer === undefined) throw new DecisionError(400, "an Ask takes an answer");
       const options = (task.request.options ?? []) as { value: unknown }[];
       if (options.length > 0 && !options.some((o) => JSON.stringify(o.value) === JSON.stringify(decision.answer))) {

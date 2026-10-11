@@ -129,6 +129,9 @@
     },
     "result": {
       "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/decision-record.schema.json"
+    },
+    "teach": {
+      "$ref": "https://github.com/codefrak-oss/hitlp/spec/schemas/approve.request.schema.json#/properties/teach"
     }
   },
   "allOf": [

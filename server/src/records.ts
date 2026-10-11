@@ -7,6 +7,25 @@ import type { StoredTask } from "./store";
 
 export type RecordFields = Omit<DecisionRecord, "requestId" | "idempotencyKey" | "primitive" | "attested" | "recommendation">;
 
+/** An option an Approve offers in `teach` (spec 5.5); carried, never interpreted. */
+export interface TeachOption {
+  id: string;
+  label: string;
+  after: ("approve" | "reject")[];
+  editable?: { label: string; default?: string };
+}
+
+/** The human's teach choice as the record carries it (spec 5.5, 6). */
+export interface TeachChoice {
+  option: string;
+  text?: string;
+}
+
+/** The options an Approve offered, or none. */
+export function offeredTeach(task: StoredTask): TeachOption[] {
+  return task.primitive === "approve" ? ((task.request.teach as { options?: TeachOption[] } | undefined)?.options ?? []) : [];
+}
+
 export function buildRecord(task: StoredTask, fields: RecordFields): DecisionRecord {
   const record: DecisionRecord = { requestId: task.id, idempotencyKey: task.idempotencyKey, primitive: task.primitive, ...fields };
   const attested = task.request.attested as Attested | undefined;

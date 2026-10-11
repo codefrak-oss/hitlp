@@ -15,6 +15,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isTerminal, type Asserted, type Attested } from "@codefrak/hitlp";
 import type { SurfaceAuthenticator, SurfaceCaller } from "./auth";
 import { displayedDigest, routedTo } from "./routing";
+import type { TeachChoice } from "./records";
 import { DecisionError, NotRoutedError, type HitlpServer, type HumanDecision } from "./server";
 import { TerminalTaskError, type Device, type StoredTask, type SurfaceStore } from "./store";
 
@@ -85,6 +86,7 @@ export function surfaceView(task: StoredTask): Record<string, unknown> {
     view.payload = structuredClone(r.payload);
     view.payloadDigest = displayedDigest(task);
     if (r.scope !== undefined) view.scope = structuredClone(r.scope);
+    if (r.teach !== undefined) view.teach = structuredClone(r.teach);
   } else {
     view.question = r.question;
     view.responseSchema = structuredClone(r.responseSchema);
@@ -103,12 +105,26 @@ function parseDecision(task: StoredTask | undefined, b: unknown): HumanDecision 
   if (d.reason !== undefined && typeof d.reason !== "string") return "reason must be a string";
   const reason = d.reason as string | undefined;
   if (task?.primitive === "ask") {
+    if (d.teach !== undefined) return "an Ask takes no teach choice";
     if (!("answer" in d)) return "an Ask takes an answer";
     return { answer: d.answer, reason };
   }
   if (d.outcome !== "approve" && d.outcome !== "reject") return "outcome must be approve or reject";
   if (d.payloadDigest !== undefined && typeof d.payloadDigest !== "string") return "payloadDigest must be a string";
-  return { outcome: d.outcome === "approve" ? "approved" : "rejected", reason, payloadDigest: d.payloadDigest as string | undefined };
+  const teach = parseTeach(d.teach);
+  if (typeof teach === "string") return teach;
+  return { outcome: d.outcome === "approve" ? "approved" : "rejected", reason, payloadDigest: d.payloadDigest as string | undefined, teach };
+}
+
+/** The `teach` of a decision body (spec 5.5), or a message saying what is wrong with it. */
+function parseTeach(t: unknown): TeachChoice | undefined | string {
+  if (t === undefined) return undefined;
+  if (!t || typeof t !== "object" || Array.isArray(t)) return "teach must be an object";
+  const c = t as Record<string, unknown>;
+  if (typeof c.option !== "string" || !c.option) return "teach.option must be a string";
+  if (c.text !== undefined && typeof c.text !== "string") return "teach.text must be a string";
+  if (Object.keys(c).some((k) => k !== "option" && k !== "text")) return "teach takes option and text only";
+  return c.text === undefined ? { option: c.option } : { option: c.option, text: c.text };
 }
 
 export class SurfaceApi {

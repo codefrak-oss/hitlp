@@ -222,6 +222,7 @@ Every request carries the envelope in addition to its primitive body
 | `context` | object | OPTIONAL | Background shown to the human: `summary` (string), `links` (URI[]), `data` (object). |
 | `requiresHuman` | boolean | OPTIONAL | `true` skips the proxy's rule and model layers (5.4). Default `false`. |
 | `asserted` | object | OPTIONAL | What the requester says about the request: `why`, `onBehalfOf`, `recommendation` (5.2), `lineage` (5.3), `asOf`. Evidence, never authority. |
+| `teach` | object | OPTIONAL | Approve only: follow-ups the requester offers the human after the decision, `{options: [...]}` (5.5). Carried, never interpreted. |
 | `attested` | object | server-filled | What the server established: `requester`, `onBehalfOf`, `by`. A requester MUST NOT send it; a server MUST ignore one that arrives (5.1). |
 
 0.1's `requester` field is gone: its `agent` is now `attested.requester` (the server
@@ -326,6 +327,47 @@ Default actions:
 A server MAY shorten a `deadline` to its TTL cap (rule R6) and MUST report the
 effective deadline in the task's `ttl`.
 
+### 5.5 Teach options
+
+An Approve MAY offer the human a second, optional step after Approve or Reject: a
+chance to teach the requester's own judge from the decision ("always allow commands
+like this", "never allow this"). The requester offers the choices in `teach`; the
+human picks one, or none; the choice comes back in the decision record (6) and the
+requester acts on it. The server and the protocol carry the options and the choice
+and never interpret either: they write no rule, change no routing and decide nothing
+from them.
+
+`teach` is `{"options": [option, ...]}`, at least one, each:
+
+| Field | Type | Req. | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | REQUIRED | The requester's id for the option, unique within the request, at most 64 characters. `once` is reserved and MUST NOT be offered. |
+| `label` | string | REQUIRED | What the surface shows, e.g. "Always allow commands like this". |
+| `after` | (`approve` \| `reject`)[] | REQUIRED | The decisions after which the option is shown. |
+| `editable` | object | OPTIONAL | `{label, default?}`: the option takes a text the human may edit (a pattern, a reason), prefilled with `default`. |
+
+A server MUST refuse an Approve whose `teach` offers the id `once` or the same id twice,
+and MUST refuse `teach` on an Ask.
+
+**On a surface.** After the human chooses Approve or Reject, a surface that supports
+teach options shows the options whose `after` names that decision, beside "Just this
+once", which is always present and is the default; an editable option shows its text,
+prefilled with `default`. The surface then sends the outcome and the choice together in
+one decision (7.8): the record is written once (6), so the choice cannot follow it. A
+surface that does not show teach options decides as before, and teaches nothing.
+
+**The choice.** The record's `teach` is `{"option", "text"?}`: the id of an offered
+option whose `after` names the outcome, and `text`, only for an editable option, the
+text as the human left it. "Just this once" (the id `once`) and no choice are the same:
+they teach nothing, and the record has no `teach`. The choice is the deciding human's:
+it is present only when `decidedBy.type` is `human`, it is part of the record and so
+covered by its `signature`, and a rule, model or policy decision never carries one.
+
+**Not an override.** A choice is a human's suggestion to the requester's judge, never
+an instruction to it. The requester decides what, if anything, a choice changes; a
+choice MUST NOT be read as overriding a requester's hard rules (what its rubric never
+allows stays never allowed), and enforcing that is the requester's job.
+
 ## 6. Decision record
 
 Every request that ends, however it ends, produces exactly one decision record
@@ -345,6 +387,7 @@ Every request that ends, however it ends, produces exactly one decision record
 | `payloadDigest` | string | Approve: the digest of the payload the human saw. |
 | `attested` | object | The request's `attested` block as the server filled it (5.1). |
 | `recommendation` | object | The request's recommendation as received (5.2), so a decision can be read against it. |
+| `teach` | object | Approve, human decisions only: the human's teach choice `{option, text?}` (5.5). Absent when no option or "just this once" was chosen, and always absent when `decidedBy.type` is not `human`. Signed with the rest of the record. |
 | `signature` | object | OPTIONAL: `{alg, keyId, value}` over the canonical record without `signature`. |
 
 The server MUST persist the record before reporting the task `completed`, MUST NOT
@@ -509,19 +552,24 @@ unrouted task, `409` for a task already terminal or a stale `payloadDigest`.
 and any escalation, 5 and R6), `requiresHuman` (5.4, `false` when absent), `context`
 and `requires` as received; for an Approve `action`, `payload` exactly as received and
 `payloadDigest` (the request's, or the server's own over the payload); for an Ask
-`question`, `responseSchema` and `options`; and `result`, the decision record, once
+`question`, `responseSchema` and `options`; `teach` (5.5) as received, when the
+request offered it; and `result`, the decision record, once
 the task is terminal. A surface MUST show `attested` and `asserted` as distinct and
 MUST NOT present asserted content as verified.
 
 **Deciding.** An Approve takes `{"outcome": "approve" | "reject", "reason"?,
-"payloadDigest"?}`; when `payloadDigest` is sent and differs from the task's the
+"payloadDigest"?, "teach"?}`; when `payloadDigest` is sent and differs from the task's the
 server MUST refuse with `409`, so a human never approves a payload other than the one
 shown. An Ask takes `{"answer", "reason"?}`; the server MUST validate `answer`
 against the Ask's `responseSchema` (and against `options`, when present) and refuse
-an invalid one with `400`. A decision is accepted once: every later decision, from
+an invalid one with `400`. `teach` is `{"option", "text"?}` (5.5); the server MUST
+refuse with `400` an option the request did not offer, one whose `after` does not name
+the outcome, `text` on an option that is not editable, and `teach` on an Ask, and MUST
+store `{"option": "once"}` as no `teach` at all. A decision is accepted once: every later decision, from
 any surface, is refused with `409` and leaves the record unchanged. The record has
 `decidedBy` `{"type": "human", "id", "roles"}`, `channel` naming the surface's kind
-(`url` for the decision page of 7.6), and for an Approve `payloadDigest`. Every
+(`url` for the decision page of 7.6), for an Approve `payloadDigest`, and `teach` when
+the human chose an option. Every
 surface, the decision page included, MUST decide through the same checks.
 
 **Devices and push.** A surface MAY register devices for push with
