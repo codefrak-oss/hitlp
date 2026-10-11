@@ -2,7 +2,7 @@
 
 Python SDK for HITLP, the human-in-the-loop-protocol.
 
-**Implements HITLP v1.0 (draft)**: [spec/hitlp.md](../../spec/hitlp.md).
+**Implements HITLP 0.2 (draft)**: [spec/hitlp.md](../../spec/hitlp.md).
 
 It is a client-side SDK: it builds and validates `human.ask` and `human.approve`
 requests, calls them over MCP Tasks, polls or cancels the task, and interprets the

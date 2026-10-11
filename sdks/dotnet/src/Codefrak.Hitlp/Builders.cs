@@ -23,8 +23,11 @@ public class EnvelopeInput
     /// <summary><c>{summary?, links?, data?}</c>.</summary>
     public JsonObject? Context { get; set; }
 
-    /// <summary><c>{agent?, onBehalfOf?}</c>.</summary>
-    public JsonObject? Requester { get; set; }
+    /// <summary>True skips the proxy's rule and model layers (spec 5.4).</summary>
+    public bool? RequiresHuman { get; set; }
+
+    /// <summary><c>{why?, onBehalfOf?, recommendation?, lineage?, asOf?}</c>: what the requester says (spec 5.1).</summary>
+    public JsonObject? Asserted { get; set; }
 }
 
 /// <summary>The common request envelope (spec section 5).</summary>
@@ -42,7 +45,8 @@ public static class Envelope
         };
         if (input.Requires != null) env["requires"] = input.Requires.DeepClone();
         if (input.Context != null) env["context"] = input.Context.DeepClone();
-        if (input.Requester != null) env["requester"] = input.Requester.DeepClone();
+        if (input.RequiresHuman != null) env["requiresHuman"] = input.RequiresHuman;
+        if (input.Asserted != null) env["asserted"] = input.Asserted.DeepClone();
         return env;
     }
 }

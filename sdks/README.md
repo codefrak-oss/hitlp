@@ -1,7 +1,7 @@
 # HITLP SDKs
 
 SDKs for HITLP, the human-in-the-loop-protocol. Each implements
-**HITLP v1.0 (draft)**, [spec/hitlp.md](../spec/hitlp.md), on the client side: the
+**HITLP 0.2 (draft)**, [spec/hitlp.md](../spec/hitlp.md), on the client side: the
 Ask and Approve primitives, the request envelope, the decision record, and the MCP
 Tasks lifecycle (call, poll, cancel, resume).
 

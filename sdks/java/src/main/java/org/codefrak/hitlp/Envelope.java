@@ -20,7 +20,8 @@ public final class Envelope {
         env.put("priority", input.priority != null ? input.priority : "normal");
         if (input.requires != null) env.put("requires", input.requires);
         if (input.context != null) env.put("context", input.context);
-        if (input.requester != null) env.put("requester", input.requester);
+        if (input.requiresHuman != null) env.put("requiresHuman", input.requiresHuman);
+        if (input.asserted != null) env.put("asserted", input.asserted);
         return env;
     }
 }

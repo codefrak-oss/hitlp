@@ -1,4 +1,4 @@
-"""Types for HITLP v1.0 (draft): spec/hitlp.md sections 4-7.
+"""Types for HITLP 0.2 (draft): spec/hitlp.md sections 4-7.
 
 Requests and decision records are plain dicts shaped as the spec's JSON schemas
 (see validate.py, which stays the authority); these TypedDicts name their keys.
@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, Optional, TypedDict
 
-SPEC_VERSION = "1.0-draft"
+SPEC_VERSION = "0.2-draft"
 
 DefaultOnTimeout = Literal["reject", "escalate", "cancel", "fail"]
 Priority = Literal["low", "normal", "high", "urgent"]
@@ -32,7 +32,9 @@ class Envelope(_EnvelopeRequired, total=False):
     priority: Priority
     requires: dict[str, list[str]]
     context: dict[str, Any]
-    requester: dict[str, str]
+    requiresHuman: bool
+    asserted: dict[str, Any]
+    attested: dict[str, Any]
 
 
 class _AskBody(TypedDict):
@@ -74,6 +76,8 @@ class DecisionRecord(_DecisionRequired, total=False):
     reason: str
     channel: str
     payloadDigest: str
+    attested: dict[str, Any]
+    recommendation: dict[str, Any]
     signature: dict[str, str]
 
 

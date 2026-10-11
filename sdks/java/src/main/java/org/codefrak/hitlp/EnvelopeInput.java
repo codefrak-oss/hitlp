@@ -14,7 +14,8 @@ public class EnvelopeInput<T extends EnvelopeInput<T>> {
     String priority;
     Map<String, ?> requires;
     Map<String, ?> context;
-    Map<String, ?> requester;
+    Boolean requiresHuman;
+    Map<String, ?> asserted;
 
     @SuppressWarnings("unchecked")
     private T self() {
@@ -62,9 +63,15 @@ public class EnvelopeInput<T extends EnvelopeInput<T>> {
         return self();
     }
 
-    /** {@code {agent?, onBehalfOf?}}. */
-    public T requester(Map<String, ?> requester) {
-        this.requester = requester;
+    /** True skips the proxy's rule and model layers (spec 5.4). */
+    public T requiresHuman(boolean requiresHuman) {
+        this.requiresHuman = requiresHuman;
+        return self();
+    }
+
+    /** {@code {why?, onBehalfOf?, recommendation?, lineage?, asOf?}}: what the requester says (spec 5.1). */
+    public T asserted(Map<String, ?> asserted) {
+        this.asserted = asserted;
         return self();
     }
 

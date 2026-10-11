@@ -11,7 +11,8 @@ export interface EnvelopeInput {
   priority?: Priority;
   requires?: Envelope["requires"];
   context?: Envelope["context"];
-  requester?: Envelope["requester"];
+  requiresHuman?: boolean;
+  asserted?: Envelope["asserted"];
 }
 
 export function buildEnvelope(input: EnvelopeInput): Envelope {
@@ -23,6 +24,7 @@ export function buildEnvelope(input: EnvelopeInput): Envelope {
   };
   if (input.requires) env.requires = input.requires;
   if (input.context) env.context = input.context;
-  if (input.requester) env.requester = input.requester;
+  if (input.requiresHuman !== undefined) env.requiresHuman = input.requiresHuman;
+  if (input.asserted) env.asserted = input.asserted;
   return env;
 }

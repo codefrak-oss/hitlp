@@ -42,7 +42,7 @@ class HumanServer:
         async def human_ask(
             idempotencyKey: str, deadline: str, defaultOnTimeout: str, question: str, responseSchema: Any,
             options: Optional[list] = None, priority: Optional[str] = None, requires: Optional[dict] = None,
-            context: Optional[dict] = None, requester: Optional[dict] = None,
+            context: Optional[dict] = None, requiresHuman: Optional[bool] = None, asserted: Optional[dict] = None,
         ) -> dict:
             return await self._run("human.ask", {k: v for k, v in locals().items() if v is not None})
 
@@ -50,7 +50,7 @@ class HumanServer:
         async def human_approve(
             idempotencyKey: str, deadline: str, defaultOnTimeout: str, action: str, payload: dict,
             payloadDigest: Optional[str] = None, scope: Optional[dict] = None, priority: Optional[str] = None,
-            requires: Optional[dict] = None, context: Optional[dict] = None, requester: Optional[dict] = None,
+            requires: Optional[dict] = None, context: Optional[dict] = None, requiresHuman: Optional[bool] = None, asserted: Optional[dict] = None,
         ) -> dict:
             return await self._run("human.approve", {k: v for k, v in locals().items() if v is not None})
 

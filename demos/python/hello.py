@@ -63,7 +63,8 @@ async def hello_async(
 ) -> HelloResult:
     client = AsyncHitlpClient(transport)
     in_an_hour = lambda: datetime.now(timezone.utc) + timedelta(hours=1)  # noqa: E731
-    requester = {"agent": "hitlp-hello-python"}
+    # The server learns who asks from the credentials (0.2 attested); the agent only says why.
+    asserted = {"why": "the hello demo greets the person and asks before deploying"}
 
     async def waiting(created: Task) -> None:
         # On a real server the human decides elsewhere: say where.
@@ -80,7 +81,7 @@ async def hello_async(
         response_schema={"type": "string", "minLength": 1},
         deadline=in_an_hour(),
         default_on_timeout="cancel",
-        requester=requester,
+        asserted=asserted,
     )
     ask_task = await client.ask(ask)
     await waiting(ask_task)
@@ -96,7 +97,7 @@ async def hello_async(
         action="deploy.greeting",
         payload={"greeting": f"Hello, {name}!", "target": "hello-world"},
         deadline=in_an_hour(),
-        requester=requester,
+        asserted=asserted,
     )
     log(f"[agent] Requesting approval for {approve['action']} (human.approve) ...")
     task = await client.approve(approve)

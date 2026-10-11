@@ -1,6 +1,11 @@
 # HITLP: Human-in-the-Loop Protocol
 
-**Version:** 1.0 (draft) · **MCP binding target:** MCP 2026-07-28 with the Tasks extension (`io.modelcontextprotocol/tasks`)
+**Version:** 0.2 (draft) · **MCP binding target:** MCP 2026-07-28 with the Tasks extension (`io.modelcontextprotocol/tasks`)
+
+0.2 supersedes 0.1, the first draft (previously numbered 1.0; renumbered because the
+protocol is provisional and has no adopters to hold to it). What changed:
+[CHANGELOG.md](CHANGELOG.md). 0.2 stays a draft until a server and a requester have
+run against it; the numbers below 1.0 say that breaking changes are still expected.
 
 ## 1. Introduction
 
@@ -24,20 +29,55 @@ The key words MUST, MUST NOT, REQUIRED, SHALL, SHALL NOT, SHOULD, SHOULD NOT,
 RECOMMENDED, MAY and OPTIONAL are to be interpreted as described in RFC 2119 and
 RFC 8174 when, and only when, they appear in all capitals.
 
-A conforming **server** implements every v1 primitive (Ask, Approve), the envelope,
+A conforming **server** implements every 0.2 primitive (Ask, Approve), the envelope,
 the decision record, the MCP binding, and every rule in section 8. A conforming
 **client** (agent or orchestrator) follows the client-side rules in section 8.
 
 ### 1.2 Terminology
 
 - **Agent**: the software that issues a request and consumes the decision.
+- **Requester**: the authenticated party a request arrives from: an agent, or a
+  service acting for one (an orchestrator, an operations server). The server knows a
+  requester by its credentials, never by what the request says.
 - **Client**: the MCP client acting for the agent.
 - **Server**: an MCP server implementing HITLP.
 - **Human**: a person reachable through the server, described by a profile (section 3).
+- **Proxy**: the server's standing decision-making on a human's behalf (section 3.1):
+  the rules and judgment that answer a request before the human is reached.
+- **Surface**: a channel a human decides on (a page, an app, a chat), trusted by the
+  server to carry that human's decision (section 7.7).
 - **Request**: one call of a primitive, made of an envelope plus a primitive body.
+- **Attested**: a part of a request the server established itself or verified with a
+  system it trusts (section 5.1). **Asserted**: a part the requester wrote, taken as
+  evidence and never as authority.
+- **Recommendation**: the requester's own judgment of the request, attached for the
+  proxy and the human to weigh (section 5.2).
+- **Lineage**: the chain of intent a request serves, from the immediate why up to who
+  first asked (section 5.3). Asserted, always.
 - **Handle**: the MCP task identifier returned for a request.
 - **Decision record**: the server's durable, attributable record of how a request ended.
 - **Default action**: what the server does when a request reaches its deadline unanswered.
+
+### 1.3 Merit and trust
+
+Two judgments precede every decision, and 0.2 keeps them in different places.
+
+**Merit** asks whether the action is a good one: is this command safe, is this change
+correct, is this the right thing to do. Merit needs the content (the diff, the
+command, the session so far) and the domain's rules. It belongs to the requester,
+which has that context; a HITLP server has none of it and MUST NOT pretend to. A
+requester that judges merit attaches its verdict as a **recommendation** (5.2).
+
+**Trust** asks whether to let the requester's judgment stand without a person: how far
+this requester, acting for this principal, on this kind of action, is believed. Trust
+needs only the envelope. It belongs to the server, as the human's **proxy** (3.1),
+and its rules read the attested part of the envelope and the recommendation, never
+the content.
+
+A human is reached when both cannot decide: the requester's merit judgment escalated
+(or the requester insists on a person, 5.4), and the proxy has no trust rule that
+settles it. The requester never learns which layer of the proxy answered except
+through the decision record (section 6).
 
 ## 2. Architecture
 
@@ -86,8 +126,37 @@ Capabilities say what a human *knows*; roles say what a human *may authorize*. A
 request targets a capability and/or a role (section 5), and the server routes it to any
 eligible human or pool. A server MUST NOT route a request to a human who lacks a
 required capability or role. A server MAY expose a discovery tool listing available
-capabilities and roles; v1 does not standardise its shape. Agents SHOULD NOT address
+capabilities and roles; 0.2 does not standardise its shape. Agents SHOULD NOT address
 individual humans; addressing by capability lets the server pool, balance and escalate.
+
+### 3.1 The proxy: three layers before the human
+
+A human resource is not only a person. In front of the person stands the server's
+**proxy**: the human's own standing judgment, applied so that the person is reached
+only for what it cannot settle. The proxy has three layers, tried in order, and a
+request stops at the first that decides it:
+
+1. **Rules.** Deterministic matches on the attested part of the envelope (5.1) and
+   on the recommendation (5.2): "approve what the ops server recommends at 0.8 or
+   better on cluster hosts", "always reach me for repo X". A rule MUST NOT read the
+   payload, the asserted part, or the lineage. A server MUST reject, when it is saved,
+   a rule that names a field outside `attested` and `recommendation`.
+2. **A model reading the human's own words.** OPTIONAL. The human writes trust rules
+   in prose; a model maps the envelope onto them. It reads the same fields a rule may
+   read and nothing else, answers with a confidence, and MUST escalate to layer 3
+   rather than decide when it is unsure. It is a reader of the human's sentences, not
+   a judge of the action: a server MUST NOT give it the payload or the lineage.
+3. **The person**, on a trusted surface (7.7).
+
+Layer 1 is the former "standing approval". The layers are the server's: a requester
+MUST NOT be able to tell, from the handle or the task, which layer will answer, and
+MUST NOT be able to choose one, except by `requiresHuman` (5.4), which skips the
+first two. The decision record names the layer that decided (section 6).
+
+Why the proxy is modest: it has no domain context, so it can only express how much
+the human trusts a requester's recommendation, not whether the action is right. The
+test for a rule in the wrong place: if deciding it would need the payload, it is a
+merit rule and belongs with the requester.
 
 ## 4. Request primitives
 
@@ -151,7 +220,99 @@ Every request carries the envelope in addition to its primitive body
 | `priority` | enum | OPTIONAL | `low`, `normal` (default), `high`, `urgent`. Affects routing and reminders, not validity. |
 | `requires` | object | OPTIONAL | `{capabilities: string[], roles: string[]}`; a human must hold all listed. |
 | `context` | object | OPTIONAL | Background shown to the human: `summary` (string), `links` (URI[]), `data` (object). |
-| `requester` | object | OPTIONAL | Who asks: `{agent, onBehalfOf}`. Recorded in the decision record. |
+| `requiresHuman` | boolean | OPTIONAL | `true` skips the proxy's rule and model layers (5.4). Default `false`. |
+| `asserted` | object | OPTIONAL | What the requester says about the request: `why`, `onBehalfOf`, `recommendation` (5.2), `lineage` (5.3), `asOf`. Evidence, never authority. |
+| `attested` | object | server-filled | What the server established: `requester`, `onBehalfOf`, `by`. A requester MUST NOT send it; a server MUST ignore one that arrives (5.1). |
+
+0.1's `requester` field is gone: its `agent` is now `attested.requester` (the server
+learns it from the credentials) and its `onBehalfOf` is `attested.onBehalfOf` when
+the credentials carry it, else `asserted.onBehalfOf`.
+
+### 5.1 Attested and asserted
+
+Every request has two kinds of content, and the envelope keeps them under two keys
+so that no reader, human or model, can mistake one for the other.
+
+**`attested`** is written by the server, after it authenticates the call and before
+anything else reads the request. It holds what the server itself established:
+
+- `requester` (string): the requester's identity, from its credentials.
+- `onBehalfOf` (object, OPTIONAL): the principal the requester acts for, `{kind, id,
+  …}`, when the credentials carry it (a run-scoped token names its run; a session
+  token names its login). The shape of `kind` and `id` is the server's.
+- `by` (string): which party attested: the server, or a system it verified with.
+
+A server MAY add facts it verifies with a system it trusts (that a ticket was
+authorized, and by whom) and MUST name that system in `by`. A server MUST NOT copy
+anything from the requester into `attested`. If a request arrives with an `attested`
+block, the server MUST drop it, fill its own, and MAY note the attempt in the record.
+
+**`asserted`** is written by the requester. It is evidence: what the requester knows or
+claims, shown to the human, given to the proxy's layers as context only where this
+spec allows, and kept in the record. Nothing in it is verified, including sentences
+that happen to be true about the human.
+
+The split is the whole trust model in one rule: **the proxy decides on `attested` and
+`recommendation`; everything under `asserted` informs the person and the audit.**
+A field's path says what it is; a reader never has to check a flag.
+
+### 5.2 Recommendation
+
+`asserted.recommendation` is the requester's own merit judgment, attached so the
+proxy can weigh it and the human can see it:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `verdict` | enum | `allow`, `deny`, `escalate`, or `none` when the requester has no judgment. |
+| `confidence` | number 0..1 | OPTIONAL. How sure the requester is. |
+| `by` | object | Who judged: `{requester, judge, model, rubric}`, each a string naming the component, model and rules revision. |
+| `reasons` | string[] | The passages or findings the verdict rests on. |
+
+A recommendation is the unit of trust: a proxy rule says how far to believe *this
+requester's* verdicts at *this* confidence. For that to mean anything the
+recommendation MUST be attributed (`by`), SHOULD carry a confidence a human can
+calibrate against decisions over time, and SHOULD carry reasons a human can audit.
+A requester with a judgment MUST send one; a requester without one sends
+`verdict: none` or omits the field.
+
+### 5.3 Lineage
+
+`asserted.lineage` is the chain of intent the request serves, outermost last: the
+immediate why, the task it belongs to, the ask that filed the task, and so on up to
+who first asked. Each link:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `kind` | string | What the link is: `command`, `ticket`, `intake`, `session`, `proposal`, or the requester's own kinds. |
+| `claim` | string | The one sentence that matters at that level: the why, the goal, the ask. |
+| `source` | object | Where it was read from, with a revision when the source has one, so it can be diffed against the source later. |
+| `by` | string | OPTIONAL. Who wrote this link. |
+
+`asserted.asOf` is when the lineage was captured. The lineage is a snapshot: it was
+accurate at `asOf` and is kept as it was in the decision record, never refreshed. A
+reader who wants the chain as it is now follows `source`.
+
+**Who writes it.** The system that holds the links writes the chain once, at the start
+of the work it governs (an orchestrator at the start of a run or a session), and each
+hop after that appends only the link it owns (an operations server appends the
+command and its why). A hop MUST pass the lineage through unchanged apart from its own
+appended link. A server MUST NOT resolve or extend the lineage itself: it reads what
+arrives. This keeps the server independent of every requester's data model and able
+to decide when those systems are down.
+
+**What it is for.** The human's card, the requester's own merit judge, and the audit.
+A proxy rule MUST NOT read it: a chain that says the human asked for something is
+still the requester's word. The attested anchor for authority is `attested`, one hop,
+not the chain.
+
+### 5.4 Requiring a person
+
+`requiresHuman: true` says the requester has done its own merit judgment and asks for
+the one thing it cannot do itself: a person's decision. The server MUST skip the
+proxy's rule and model layers and route to a human. A requester SHOULD reserve it for
+the cases its own rules name as needing a person (a rubric's escalate section), and
+SHOULD otherwise send its recommendation and let the proxy decide how far to trust
+it; a requester that sets it on every request gets no benefit from the proxy.
 
 Default actions:
 
@@ -178,15 +339,23 @@ Every request that ends, however it ends, produces exactly one decision record
 | `outcome` | enum | `answered` (Ask), `approved`, `rejected`, `timed_out`, `cancelled`. |
 | `answer` | any | Ask only, when `answered`: the validated answer. |
 | `reason` | string | Free-text justification; SHOULD be present when `rejected`. |
-| `decidedBy` | object | `{type: human \| policy, id, roles}`; `policy` when a default action decided. |
+| `decidedBy` | object | Which layer decided, and who: `{type: human \| rule \| model \| policy, id, roles, confidence}`. `human` is the proxy's third layer, on a surface; `rule` its first, `id` naming the rule; `model` its second, with the `confidence` it reported; `policy` a default action at the deadline. |
 | `decidedAt` | date-time | When the decision was made. |
-| `channel` | string | Where it was made, e.g. `url`, `chat`, `sms`. |
+| `channel` | string | Where it was made: the surface for a human (`url`, `desktop`, `ios`, `chat`, `sms`, …), absent for a rule, model or policy decision. |
 | `payloadDigest` | string | Approve: the digest of the payload the human saw. |
+| `attested` | object | The request's `attested` block as the server filled it (5.1). |
+| `recommendation` | object | The request's recommendation as received (5.2), so a decision can be read against it. |
 | `signature` | object | OPTIONAL: `{alg, keyId, value}` over the canonical record without `signature`. |
 
 The server MUST persist the record before reporting the task `completed`, MUST NOT
 change it afterwards, and SHOULD sign it. Timeout outcomes MUST name `policy` as the
-decider, never a human.
+decider, never a human. The server MUST keep the request as received (its `asserted`
+block included, lineage and all) with the record for the retention period, so the
+decision can be audited against what was in front of the decider at the time.
+
+Naming the layer is what makes the proxy honest: a human reading the records can see
+how often a rule or the model decided, compare those decisions with their own, and
+calibrate a requester's confidence against the outcomes.
 
 ## 7. Binding over MCP (2026-07-28)
 
@@ -283,6 +452,18 @@ only through the task (`tasks/get`, or a task status notification), never by
 submitting it itself. A server MUST NOT accept an Approve decision through form-mode
 elicitation or through any decision content supplied by the client.
 
+### 7.7 Trusted surfaces
+
+A surface is where a person decides: the server's hosted decision page (7.6), a
+desktop or phone app, a chat, SMS. The server holds the list of surfaces it trusts to
+carry a given human's decisions, each with its own credentials; a decision arrives
+from a surface the server authenticates, never from the requester's client. The
+server MUST record the surface in the decision record's `channel`. A server MAY let
+a human add or remove their own surfaces; 0.2 does not standardise how. The point of
+the list is that requesters and surfaces multiply independently: a new surface serves
+every requester, and a new requester reaches every surface, with the server between
+them.
+
 ## 8. Normative async and security rules
 
 **R1. The handle is the contract, not the connection.** The server MUST return the
@@ -321,39 +502,101 @@ permanent approval (no `notAfter`, unbounded `maxUses`).
 **R7. Form-mode is not a human gate.** As section 7.6: a decision that authorizes
 action MUST land on a surface the agent cannot reach.
 
+**R8. The server owns `attested`.** The server fills `attested` from the credentials
+it authenticated and from systems it verified with, and from nothing else. A request's
+own `attested` block is dropped. Nothing under `asserted` is ever promoted to
+`attested` by being repeated, well-formed or plausible.
+
+**R9. Trust rules read `attested` and `recommendation` only.** A proxy rule (3.1
+layer 1) and the model layer (3.1 layer 2) MUST NOT read the payload, `context`, or
+anything under `asserted` other than `recommendation`. A server MUST refuse to save a
+rule that names any other field. The lineage, the why and the summary are for the
+person and the record.
+
+**R10. Lineage is evidence, not authority.** A server MUST NOT derive any permission
+from `asserted.lineage`, however it reads, and MUST NOT resolve or extend it. It is
+stored as received, as of the time it says, and shown to the person as the
+requester's account of why.
+
+**R11. The layer is named.** Every decision record names which proxy layer decided
+(`decidedBy.type`), and a decision by a rule or the model MUST carry enough (`id`,
+`confidence`) for a human to find and change what decided it.
+
 ## 9. Example
 
-A `human.approve` call:
+A `human.approve` call from an operations server, acting for an agent's run, after
+its own judge escalated a command. The requester sends everything but `attested`:
 
 ```json
 {
-  "idempotencyKey": "deploy-4821-prod",
-  "deadline": "2026-10-15T12:00:00Z",
+  "idempotencyKey": "ops-run-e921-cmd-14",
+  "deadline": "2026-10-11T12:33:00Z",
   "defaultOnTimeout": "reject",
-  "priority": "high",
-  "requires": { "roles": ["approver.production-deploy"] },
-  "context": { "summary": "Release 4.21 passed staging checks." },
-  "action": "Deploy release 4.21 to production",
-  "payload": { "service": "billing", "version": "4.21.0" },
-  "payloadDigest": "sha256:9f2c1e0a",
-  "scope": { "maxUses": 1, "notAfter": "2026-10-16T00:00:00Z" }
+  "priority": "urgent",
+  "requires": { "roles": ["approver.homelab"] },
+  "context": { "summary": "k8s-1: kubectl -n frakworks rollout undo deploy/engine\nwhy: the new pod crash-loops; restore the last working rollout" },
+  "action": "run",
+  "payload": { "host": "k8s-1", "command": "kubectl -n frakworks rollout undo deploy/engine" },
+  "payloadDigest": "sha256:10e81569",
+  "scope": { "maxUses": 1, "notAfter": "2026-10-11T12:33:00Z" },
+  "requiresHuman": false,
+  "asserted": {
+    "why": "the new pod crash-loops on the 6Gi limit; restore the last working rollout",
+    "recommendation": {
+      "verdict": "escalate",
+      "confidence": 0.78,
+      "by": { "requester": "homelab-ops-server", "judge": "engine /mcp/judge", "model": "jev-1.13.0", "rubric": "ops/rubric/ssh.md@87554a1" },
+      "reasons": ["Escalate: a rollout change the rubric does not name"]
+    },
+    "lineage": [
+      { "kind": "command", "claim": "restore the last working rollout", "source": { "run": "e921", "session": "24bd" }, "by": "homelab-ops-server" },
+      { "kind": "ticket", "claim": "roll out the 6Gi limit and verify the engine stays up", "source": { "repo": "lundmatt1/homelab-gitops", "number": 101, "bodyRev": "c3a9" }, "by": "frakworks-engine" },
+      { "kind": "intake", "claim": "the limit change is merged; it needs rolling out and watching", "source": { "intake": "B", "filedBy": "smith run on #100" }, "by": "frakworks-engine" },
+      { "kind": "ticket", "claim": "raise the engine's memory limit to 6Gi", "source": { "repo": "lundmatt1/homelab-gitops", "number": 100, "bodyRev": "91f0" }, "by": "frakworks-engine" },
+      { "kind": "intake", "claim": "the engine got OOM-killed twice this week, fix it", "source": { "intake": "A", "filedBy": "lundmatt1 via first mate" }, "by": "frakworks-engine" }
+    ],
+    "asOf": "2026-10-11T12:27:00Z"
+  }
 }
 ```
 
-returns a Task handle at once (`status: working`, with `ttl` and `pollInterval`). When it completes, the task result is a decision record:
+The server authenticates the call and fills `attested` before anything reads the
+request; the lineage's last link, which says a person started the chain, stays under
+`asserted` and grants nothing:
+
+```json
+"attested": {
+  "requester": "homelab-ops-server",
+  "onBehalfOf": { "kind": "run", "id": "e921", "ticket": "lundmatt1/homelab-gitops#101" },
+  "by": "hitlp-server"
+}
+```
+
+The call returns a Task handle at once (`status: working`, with `ttl` and
+`pollInterval`). The proxy's rules do not match (the human has a rule for `allow`
+verdicts on cluster hosts, none for `escalate`), its model layer reads the human's
+sentence "escalates always reach me" and defers, and the request goes to the person,
+who approves it on their phone. The task result is the decision record:
 
 ```json
 {
   "requestId": "task-7f3a",
-  "idempotencyKey": "deploy-4821-prod",
+  "idempotencyKey": "ops-run-e921-cmd-14",
   "primitive": "approve",
   "outcome": "approved",
-  "decidedBy": { "type": "human", "id": "h-102", "roles": ["approver.production-deploy"] },
-  "decidedAt": "2026-10-08T18:04:11Z",
-  "channel": "url",
-  "payloadDigest": "sha256:9f2c1e0a",
+  "reason": "yes, roll it back",
+  "decidedBy": { "type": "human", "id": "h-102", "roles": ["approver.homelab"] },
+  "decidedAt": "2026-10-11T12:28:12Z",
+  "channel": "ios",
+  "payloadDigest": "sha256:10e81569",
+  "attested": { "requester": "homelab-ops-server", "onBehalfOf": { "kind": "run", "id": "e921", "ticket": "lundmatt1/homelab-gitops#101" }, "by": "hitlp-server" },
+  "recommendation": { "verdict": "escalate", "confidence": 0.78, "by": { "requester": "homelab-ops-server", "judge": "engine /mcp/judge", "model": "jev-1.13.0", "rubric": "ops/rubric/ssh.md@87554a1" }, "reasons": ["Escalate: a rollout change the rubric does not name"] },
   "signature": { "alg": "ES256", "keyId": "hitlp-2026", "value": "MEUCIQ..." }
 }
 ```
+
+Had the judge said `allow` at 0.91, the human's first rule would have decided and
+the record would read `"decidedBy": { "type": "rule", "id": "trust-ops-allows-on-cluster" }`
+with no `channel`, and the person would never have been reached.
 
 More examples: [spec/examples/](examples/).

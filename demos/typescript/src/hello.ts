@@ -46,7 +46,8 @@ export async function hello({ prompt, transport, log = console.log, checkpointFi
     log(`[agent] Task ${task.taskId} waits for a human${task.decisionUrl ? ` at ${task.decisionUrl}` : " (the server logs its decision page URL)"}.`);
   };
   const inAnHour = () => new Date(Date.now() + 3_600_000);
-  const requester = { agent: "hitlp-hello-typescript" };
+  // The server learns who asks from the credentials (0.2 attested); the agent only says why.
+  const asserted = { why: "the hello demo greets the person and asks before deploying" };
 
   // Ask: the call returns a task handle at once; the human answers later.
   log("[agent] Asking the human for their name (human.ask) ...");
@@ -55,7 +56,7 @@ export async function hello({ prompt, transport, log = console.log, checkpointFi
     responseSchema: { type: "string", minLength: 1 },
     deadline: inAnHour(),
     defaultOnTimeout: "cancel",
-    requester,
+    asserted,
   });
   const askTask = await client.ask(ask);
   await waiting(askTask);
@@ -72,7 +73,7 @@ export async function hello({ prompt, transport, log = console.log, checkpointFi
     action: "deploy.greeting",
     payload: { greeting: `Hello, ${name}!`, target: "hello-world" },
     deadline: inAnHour(),
-    requester,
+    asserted,
   });
   log(`[agent] Requesting approval for ${approve.action} (human.approve) ...`);
   const approveTask = await client.approve(approve);

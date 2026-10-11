@@ -25,7 +25,8 @@ def build_envelope(
     priority: Priority = "normal",
     requires: Optional[dict[str, list[str]]] = None,
     context: Optional[dict[str, Any]] = None,
-    requester: Optional[dict[str, str]] = None,
+    requires_human: Optional[bool] = None,
+    asserted: Optional[dict[str, Any]] = None,
 ) -> Envelope:
     """Envelope fields; the key defaults to a fresh one, priority to ``normal``.
 
@@ -41,6 +42,8 @@ def build_envelope(
         env["requires"] = requires
     if context is not None:
         env["context"] = context
-    if requester is not None:
-        env["requester"] = requester
+    if requires_human is not None:
+        env["requiresHuman"] = requires_human
+    if asserted is not None:
+        env["asserted"] = asserted
     return env
