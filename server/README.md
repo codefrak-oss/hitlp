@@ -235,7 +235,7 @@ of their own. On Kubernetes that is `replicas: 1` with `strategy: Recreate`, a
 `ReadWriteOnce` PersistentVolumeClaim mounted at `/var/lib/hitlp`, and the
 settings files from a Secret mounted read-only at `/etc/hitlp`. The image runs
 as the `node` user (uid 1000); give the volume `fsGroup: 1000`. CI builds the
-image on `server/**` changes and pushes nowhere.
+image on `server/**` changes and, on `main`, pushes it to the site registry named by the Actions variable `REGISTRY` (the `publish` job in `.github/workflows/server.yml`), printing the digest the overlay pins.
 
 #### Kubernetes (Kustomize base)
 
