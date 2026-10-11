@@ -1,0 +1,41 @@
+# One replica only: the store is SQLite on a ReadWriteOnce volume.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hitlp-server
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: hitlp-server
+          image: hitlp-server
+          # Placeholder: the overlay patches this to the page's public URL.
+          args: ["--page-url", "https://hitlp.example.com"]
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: page
+              containerPort: 8081
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: page
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/hitlp
+            - name: settings
+              mountPath: /etc/hitlp
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hitlp-data
+        - name: settings
+          secret:
+            secretName: hitlp-settings

@@ -1,0 +1,13 @@
+# HITLP reference server, Kustomize base. No namespace, registry, host, TLS or
+# secrets here: a site overlay supplies them (server/README.md, "Kubernetes").
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/name: hitlp-server
+    includeSelectors: true
+resources:
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml

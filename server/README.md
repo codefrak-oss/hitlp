@@ -237,6 +237,55 @@ settings files from a Secret mounted read-only at `/etc/hitlp`. The image runs
 as the `node` user (uid 1000); give the volume `fsGroup: 1000`. CI builds the
 image on `server/**` changes and pushes nowhere.
 
+#### Kubernetes (Kustomize base)
+
+`deploy/k8s/base` is a Kustomize base of that shape: a Deployment
+(`replicas: 1`, `Recreate`, `fsGroup: 1000`), a Service with ports `http`
+(8080: MCP and the surface API) and `page` (8081: the decision page), a 1Gi
+`ReadWriteOnce` PVC `hitlp-data` at `/var/lib/hitlp`, and an Ingress for the
+placeholder host `hitlp.example.com`. It sets no namespace and carries no
+secrets, registry, tag or real host. The readiness probe is `GET /login` on the
+page port, which answers 200 without a token once the server listens.
+
+The Secret `hitlp-settings` is mounted read-only at `/etc/hitlp` and must hold
+`tokens.json`, `approvers.json`, `admins.json` and `surfaces.json`. The base
+only names it: the overlay (or the cluster) creates it, and it is never
+committed. The overlay supplies the namespace, the image name and tag, the
+`--page-url` (the base's `https://hitlp.example.com` is a placeholder: patch
+it), the Ingress host and its TLS, and the Secret:
+
+```yaml
+# kustomization.yaml in the site overlay
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hitlp
+resources:
+  - https://github.com/codefrak-oss/hitlp//deploy/k8s/base?ref=main
+images:
+  - name: hitlp-server
+    newName: registry.example:5000/hitlp-server
+    newTag: "1.0.0"
+patches:
+  - target: {kind: Deployment, name: hitlp-server}
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/args
+        value: ["--page-url", "https://hitlp.home.example"]
+  - target: {kind: Ingress, name: hitlp-server}
+    patch: |
+      - op: replace
+        path: /spec/rules/0/host
+        value: hitlp.home.example
+      - op: add
+        path: /spec/tls
+        value: [{hosts: [hitlp.home.example], secretName: hitlp-tls}]
+```
+
+For push, put the APNs key (the `.p8` file) in the same Secret, so it appears
+under `/etc/hitlp`, and add `--apns-key /etc/hitlp/<key>.p8` and its ids
+(`--apns-key-id`, `--apns-team-id`, `--apns-bundle-id`; see the flags table above) to the `args` value the overlay
+already replaces.
+
 ### Mac (LaunchDaemon)
 
 ```sh
