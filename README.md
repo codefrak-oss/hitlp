@@ -126,5 +126,6 @@ Runnable hello-world demos, one per SDK, are in [demos/](demos/README.md):
 - [demos/](demos/README.md): runnable hello-world demos built on the SDKs.
 - [server/](server/README.md): a reference server (TypeScript, SQLite task store).
 - [conformance/](conformance/README.md): a black-box conformance suite for any server.
+- [surfaces/ios/](surfaces/ios/README.md): an iPhone app, the reference client of the surface API (spec 7.8).
 
 See [LICENSE](LICENSE) for license terms.
