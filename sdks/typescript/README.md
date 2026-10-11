@@ -71,7 +71,7 @@ const done = await client.waitForTerminal(task, {
 | Envelope (§5) | `buildEnvelope`; every builder takes its fields |
 | Ask (§4.1), Approve (§4.2) | `buildAsk`, `buildApprove` |
 | Decision record (§6) | `DecisionRecord`, `resolve`, `isApproved`, `answerOf`, `verifyPayloadDigest` |
-| Tools, Task lifecycle (§7.1–7.4) | `HitlpClient`: `ask`, `approve`, `get`, `cancel`, `waitForTerminal` (with `AbortSignal`), `resume` |
+| Tools, Task lifecycle (§7.1–7.4) | `HitlpClient`: `ask`, `approve`, `get`, `cancel`, `waitForTerminal` (with `AbortSignal`; on status notifications when the transport has a stream, else polling), `resume` |
 | R1 handle, R2 no approval from silence | handles return at once; only `approved` with a matching digest is approval |
 | R3 resumable agents | `checkpointFor`, `serializeCheckpoint`, `parseCheckpoint` |
 | R4 idempotency | `newIdempotencyKey`; client retries resend the same key |
@@ -114,6 +114,28 @@ const done = await hitlp.waitForTerminal(task);
 
 The Tasks API is experimental in the MCP SDK (`client.experimental.tasks`), so
 the adapter pins `@modelcontextprotocol/sdk` `^1.32` and may need to follow it.
+
+### Waiting on status notifications instead of polling
+
+With `notifications: true`, `McpTaskTransport` listens for
+`notifications/tasks/status` on the session's stream (spec 7.4) and
+`waitForTerminal` stops polling: it reads `tasks/get` once to reconcile, then
+again only when a notification for its task arrives (and after a terminal one,
+for the decision record). Call `reconnected()` on the transport whenever the
+stream reconnects; every wait then reconciles once with `tasks/get`. A transport
+without `watch` (or with `notifications` off) falls back to polling `tasks/get`
+at `pollInterval`. The option takes over the MCP client's handler for that
+notification.
+
+```ts
+const transport = new McpTaskTransport(mcp, { notifications: true });
+const done = await new HitlpClient(transport).waitForTerminal(task); // no timer
+```
+
+A custom `TaskTransport` gets the same by implementing `watch(listener)`, which
+reports `{kind: "status", taskId, status}` and `{kind: "reconnected"}` events and
+returns the unsubscribe, or undefined when it has no stream.
+`test/notifications.test.ts` covers both paths.
 `test/mcp.test.ts` runs Ask and Approve through it against an in-process MCP server.
 
 ## Build and test

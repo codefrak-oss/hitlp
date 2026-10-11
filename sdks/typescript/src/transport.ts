@@ -19,7 +19,16 @@ export interface TaskTransport {
   callTool(name: HitlpTool, args: Record<string, unknown>): Promise<Task>;
   getTask(taskId: string): Promise<Task>;
   cancelTask(taskId: string): Promise<Task>;
+  /**
+   * Optional: listens for pushed task status (spec 7.4, `notifications/tasks/status`)
+   * and stream (re)connects. Returns the unsubscribe, or undefined when no stream is
+   * available, in which case the client polls `tasks/get`.
+   */
+  watch?(listener: (event: TaskEvent) => void): (() => void) | undefined;
 }
+
+/** What a watching transport reports: a task's new status, or that its stream (re)connected. */
+export type TaskEvent = { kind: "status"; taskId: string; status: string } | { kind: "reconnected" };
 
 export class ReservedToolError extends Error {
   constructor(name: string) {

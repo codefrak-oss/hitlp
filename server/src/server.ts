@@ -3,6 +3,8 @@
 // re-authenticates its caller and only the creating client sees a task (R5).
 // Deadlines are capped (R6) and expire into their default action (R2); an
 // Approve goes URL-mode when a decision page is configured (spec 7.6, R7).
+// Each status change is pushed as notifications/tasks/status to the sessions of
+// the requester that owns the task (spec 7.4), never to anyone else's.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { TaskStore as McpTaskStore } from "@modelcontextprotocol/sdk/experimental/tasks/interfaces.js";
@@ -11,6 +13,7 @@ import {
   CallToolRequestSchema,
   CancelTaskRequestSchema,
   ErrorCode,
+  type TaskStatusNotification,
   GetTaskPayloadRequestSchema,
   GetTaskRequestSchema,
   ListTasksRequestSchema,
@@ -116,7 +119,10 @@ function resultOf(t: StoredTask) {
 }
 
 export class HitlpServer {
-  private readonly servers = new Set<McpServer>();
+  /** Each connected session, and the requesters (client ids) that authenticated a request on it. */
+  private readonly servers = new Map<McpServer, Set<string>>();
+  /** The store every status change goes through, so each one is pushed (spec 7.4). */
+  private readonly tasks: TaskStore;
   private readonly listeners = new Set<(task: StoredTask) => void>();
   private readonly timer?: NodeJS.Timeout;
   readonly now: () => number;
@@ -124,6 +130,7 @@ export class HitlpServer {
 
   constructor(private readonly options: HitlpServerOptions) {
     this.now = options.now ?? Date.now;
+    this.tasks = this.notifying(options.store);
     this.expiry = { escalationGraceMs: options.escalationGraceMs ?? 24 * HOUR, onEscalate: options.onEscalate };
     // R2: tasks that expired while the server was down get their default action now.
     this.sweep();
@@ -135,7 +142,38 @@ export class HitlpServer {
   }
 
   get store(): TaskStore {
-    return this.options.store;
+    return this.tasks;
+  }
+
+  /** `inner`, with every `update` that changes a task's status pushed to its owner's sessions. */
+  private notifying(inner: TaskStore): TaskStore {
+    return new Proxy(inner, {
+      get: (target, prop) => {
+        if (prop === "update") {
+          return (id: string, status: StoredTask["status"], opts?: Parameters<TaskStore["update"]>[2]) => {
+            const before = target.getById(id)?.status;
+            const after = target.update(id, status, opts);
+            if (after.status !== before) this.pushStatus(after);
+            return after;
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  }
+
+  /**
+   * Sends notifications/tasks/status (the MCP task, never the decision record) on
+   * every session the task's owner authenticated on; over Streamable HTTP it goes
+   * on the standalone GET stream, and is dropped when none is open (spec 7.4).
+   */
+  private pushStatus(task: StoredTask): void {
+    const notification: TaskStatusNotification = { method: "notifications/tasks/status", params: toMcpTask(task) };
+    for (const [server, owners] of this.servers) {
+      if (!owners.has(task.clientId) || !server.isConnected()) continue;
+      server.server.notification(notification).catch((e: Error) => console.error(`hitlp: a status notification failed: ${e.message}`));
+    }
   }
 
   /** Applies the default action to every overdue task (R2); returns how many changed. */
@@ -151,9 +189,15 @@ export class HitlpServer {
 
   /** Serves one MCP connection. */
   async connect(transport: Transport): Promise<McpServer> {
-    const server = this.build();
-    this.servers.add(server);
+    const owners = new Set<string>();
+    const server = this.build(owners);
+    this.servers.set(server, owners);
     await server.connect(transport);
+    const onclose = server.server.onclose;
+    server.server.onclose = () => {
+      this.servers.delete(server);
+      onclose?.();
+    };
     return server;
   }
 
@@ -238,33 +282,35 @@ export class HitlpServer {
 
   async close(): Promise<void> {
     if (this.timer) clearInterval(this.timer);
-    for (const s of this.servers) await s.close();
+    for (const s of [...this.servers.keys()]) await s.close();
     this.servers.clear();
   }
 
   /** R5: resolve the caller from this request's credential. */
-  private caller(authInfo: AuthInfo | undefined): string {
-    return this.attestedCaller(authInfo).clientId;
+  private caller(authInfo: AuthInfo | undefined, owners?: Set<string>): string {
+    return this.attestedCaller(authInfo, owners).clientId;
   }
 
   /** R5 and R8: the caller, and the principal its credential carries, from this request's credential only. */
-  private attestedCaller(authInfo: AuthInfo | undefined): Caller {
+  private attestedCaller(authInfo: AuthInfo | undefined, owners?: Set<string>): Caller {
     const token = tokenOf(authInfo, this.options.defaultToken);
     const clientId = this.options.auth.resolve(token);
     if (!clientId) throw new McpError(ErrorCode.InvalidRequest, "unauthorized");
+    // The session now carries this requester's status notifications (spec 7.4).
+    owners?.add(clientId);
     const onBehalfOf = this.options.auth.onBehalfOf?.(token);
     return onBehalfOf === undefined ? { clientId } : { clientId, onBehalfOf };
   }
 
   /** R5: a task the caller did not create is reported as not found. */
-  private ownTask(taskId: string, authInfo: AuthInfo | undefined): StoredTask {
-    const clientId = this.caller(authInfo);
+  private ownTask(taskId: string, authInfo: AuthInfo | undefined, owners?: Set<string>): StoredTask {
+    const clientId = this.caller(authInfo, owners);
     const task = this.store.getById(taskId);
     if (!task || task.clientId !== clientId) throw new McpError(ErrorCode.InvalidParams, `Task not found: ${taskId}`);
     return expireIfDue(this.store, task, this.now(), this.expiry);
   }
 
-  private build(): McpServer {
+  private build(owners: Set<string>): McpServer {
     const store = this.store;
     // The MCP SDK requires a task store to route task-augmented tool calls;
     // every task request is answered by the handlers below instead.
@@ -302,8 +348,8 @@ export class HitlpServer {
           createTask: async () => {
             throw new McpError(ErrorCode.InternalError, "unreachable");
           },
-          getTask: async (_args, extra) => toMcpTask(this.ownTask(extra.taskId, extra.authInfo)),
-          getTaskResult: async (_args, extra) => resultOf(this.ownTask(extra.taskId, extra.authInfo)) as never,
+          getTask: async (_args, extra) => toMcpTask(this.ownTask(extra.taskId, extra.authInfo, owners)),
+          getTaskResult: async (_args, extra) => resultOf(this.ownTask(extra.taskId, extra.authInfo, owners)) as never,
         },
       );
     }
@@ -314,7 +360,7 @@ export class HitlpServer {
       const name = req.params.name;
       if (!(name in TOOLS)) throw new McpError(ErrorCode.InvalidParams, `Tool ${name} not found`);
       if (!req.params.task) throw new McpError(ErrorCode.MethodNotFound, `Tool ${name} requires task augmentation (taskSupport: 'required')`);
-      const task = await createHumanTask(store, this.attestedCaller(extra.authInfo), name, req.params.arguments ?? {}, {
+      const task = await createHumanTask(store, this.attestedCaller(extra.authInfo, owners), name, req.params.arguments ?? {}, {
         ttl: req.params.task.ttl ?? undefined,
         pollInterval: this.options.pollInterval ?? DEFAULT_POLL_INTERVAL,
         now: this.now(),
@@ -326,19 +372,19 @@ export class HitlpServer {
       });
       return { task: toMcpTask(task) } as never;
     });
-    raw.setRequestHandler(GetTaskRequestSchema, async (req, extra) => toMcpTask(this.ownTask(req.params.taskId, extra.authInfo)) as never);
+    raw.setRequestHandler(GetTaskRequestSchema, async (req, extra) => toMcpTask(this.ownTask(req.params.taskId, extra.authInfo, owners)) as never);
     raw.setRequestHandler(GetTaskPayloadRequestSchema, async (req, extra) => {
-      const task = this.ownTask(req.params.taskId, extra.authInfo);
+      const task = this.ownTask(req.params.taskId, extra.authInfo, owners);
       // R1: never hold the connection waiting for a human.
       if (!isTerminal(task.status)) throw new McpError(ErrorCode.InvalidParams, `Task ${task.id} is ${task.status}; poll tasks/get`);
       return { ...resultOf(task), _meta: { "io.modelcontextprotocol/related-task": { taskId: task.id } } } as never;
     });
     raw.setRequestHandler(ListTasksRequestSchema, async (_req, extra) => ({
-      tasks: store.list(this.caller(extra.authInfo)).map((t) => toMcpTask(expireIfDue(store, t, this.now(), this.expiry))),
+      tasks: store.list(this.caller(extra.authInfo, owners)).map((t) => toMcpTask(expireIfDue(store, t, this.now(), this.expiry))),
       _meta: {},
     }) as never);
     raw.setRequestHandler(CancelTaskRequestSchema, async (req, extra) => {
-      const task = this.ownTask(req.params.taskId, extra.authInfo);
+      const task = this.ownTask(req.params.taskId, extra.authInfo, owners);
       if (isTerminal(task.status)) throw new McpError(ErrorCode.InvalidParams, `Cannot cancel task in terminal status: ${task.status}`);
       const cancelled = store.update(task.id, "cancelled", { statusMessage: "Client cancelled the request." });
       return { ...toMcpTask(cancelled), _meta: cancelled.meta ?? {} } as never;

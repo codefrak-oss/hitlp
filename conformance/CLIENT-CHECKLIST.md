@@ -16,6 +16,8 @@ its runtime, or an SDK) must keep; review a client against each.
 - [ ] The client reads status with `tasks/get` and never waits on an open
       request for a human.
 - [ ] It polls no more often than the `pollInterval` the server returned.
+- [ ] Where a session stream is available, it keeps it open and acts on `notifications/tasks/status`, reading the decision with `tasks/get` after a terminal one, and does not poll on a timer.
+- [ ] On every stream connect and reconnect it calls `tasks/get` once for each task it still holds open.
 - [ ] Where it uses task status notifications, it can still fall back to polling.
 
 ## R2: a timeout is an answer (spec 5, 7.5, R2)

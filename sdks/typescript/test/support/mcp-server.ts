@@ -14,6 +14,8 @@ export interface TestMcpServer {
   calls: { name: string; args: Record<string, unknown> }[];
   /** Completes a task with a decision record (requestId is the task id). */
   decide(taskId: string, record: Omit<DecisionRecord, "requestId">): Promise<void>;
+  /** Sends notifications/tasks/status for the task, as a HITLP server does on a status change (spec 7.4). */
+  notifyStatus(taskId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -52,6 +54,10 @@ export async function startTestMcpServer(pollInterval = 10): Promise<TestMcpServ
         content: [{ type: "text", text: JSON.stringify(structuredContent) }],
         structuredContent,
       });
+    },
+    async notifyStatus(taskId) {
+      const task = (await taskStore.getTask(taskId))!;
+      await server.server.notification({ method: "notifications/tasks/status", params: task });
     },
     async close() {
       await client.close();

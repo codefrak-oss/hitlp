@@ -468,9 +468,26 @@ status again. A cancellation or failure SHOULD still produce a decision record
 
 The client reads status with `tasks/get`, no more often than the `pollInterval` the
 server returned. Once the task is terminal, `tasks/get` returns its result (the
-decision record) inline; there is no separate result method. Where the server
-supports it, a client MAY instead receive a task status notification; it MUST still be able to fall back to polling,
-since a notification is a convenience and not a delivery guarantee. The client cancels
+decision record) inline; there is no separate result method.
+
+Where the transport has a server-to-client stream (the standalone GET stream of MCP
+Streamable HTTP, or stdio), the server SHOULD send `notifications/tasks/status` each
+time a task changes status, and MUST send it when the task reaches a terminal status
+(`completed`, `failed`, `cancelled`, including by TTL expiry, 7.5). The notification
+carries the MCP task (its `taskId` and `status`, with `statusMessage` and `_meta` as
+`tasks/get` gives them) and never the decision record, which is read with `tasks/get`.
+It goes only to sessions of the requester that owns the task: a session carries the
+notifications of the requesters whose credentials authenticated a request on it (R5),
+and no other requester's stream receives anything about the task.
+
+A requester SHOULD keep the session stream open and act on status notifications: after
+a terminal one it reads the decision with `tasks/get`. On every stream connect and
+reconnect it reconciles once, calling `tasks/get` for each task it still holds open,
+since notifications sent while no stream was open are lost. While a stream is
+available a requester SHOULD NOT poll on a timer. A notification is a convenience,
+not a delivery guarantee: polling `tasks/get` no more often than `pollInterval`
+remains the fallback, and a client MUST be able to use it when no stream is
+available. Either way no request is held open waiting for a human (R1). The client cancels
 with `tasks/cancel`; the server MUST then stop notifying humans and withdraw open
 prompts where the channel permits.
 

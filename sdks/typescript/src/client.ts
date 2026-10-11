@@ -1,6 +1,6 @@
 import { resolve, type Resolution } from "./decision";
 import type { Checkpoint } from "./checkpoint";
-import { APPROVE_TOOL, ASK_TOOL, assertCallableTool, type HitlpTool, type TaskTransport } from "./transport";
+import { APPROVE_TOOL, ASK_TOOL, assertCallableTool, type HitlpTool, type TaskEvent, type TaskTransport } from "./transport";
 import type { ApproveDecision, ApproveRequest, AskDecision, AskRequest, DecisionRecord, Task } from "./types";
 import { isTerminal } from "./types";
 import { assertValidApproveDecision, assertValidApproveRequest, assertValidAskDecision, assertValidAskRequest } from "./validate";
@@ -81,27 +81,56 @@ export class HitlpClient {
   }
 
   /**
-   * Polls `tasks/get` until the task is terminal, never more often than the
-   * server's `pollInterval` (spec 7.4), and validates the decision record.
+   * Waits until the task is terminal and validates the decision record. When the
+   * transport has a stream (`watch`), it reads `tasks/get` once to reconcile, then
+   * again only on a status notification for the task or a stream reconnect, never
+   * on a timer. Without one it polls `tasks/get`, never more often than the
+   * server's `pollInterval` (spec 7.4).
    */
   async waitForTerminal<R extends DecisionRecord = DecisionRecord>(
     taskOrId: Task<R> | string,
     options: WaitOptions = {},
   ): Promise<Task<R>> {
-    let task = typeof taskOrId === "string" ? ((await this.get(taskOrId)) as Task<R>) : taskOrId;
-    let previous: string | undefined;
-    while (!isTerminal(task.status)) {
-      options.signal?.throwIfAborted();
-      if (task.status === "input_required" && previous !== "input_required") await options.onInputRequired?.(task);
-      previous = task.status;
-      await this.sleep(Math.max(task.pollInterval ?? this.defaultPollInterval, 0), options.signal);
-      task = (await this.get(task.taskId)) as Task<R>;
+    const taskId = typeof taskOrId === "string" ? taskOrId : taskOrId.taskId;
+    let pending = false;
+    let wake: (() => void) | undefined;
+    // Subscribed before the reconciling read, so no notification falls between them.
+    const unsubscribe = this.transport.watch?.((e: TaskEvent) => {
+      if (e.kind === "status" && e.taskId !== taskId) return;
+      pending = true;
+      wake?.();
+    });
+    try {
+      let task = typeof taskOrId === "string" || unsubscribe ? ((await this.get(taskId)) as Task<R>) : taskOrId;
+      let previous: string | undefined;
+      while (!isTerminal(task.status)) {
+        options.signal?.throwIfAborted();
+        if (task.status === "input_required" && previous !== "input_required") await options.onInputRequired?.(task);
+        previous = task.status;
+        if (unsubscribe) {
+          if (!pending) await new Promise<void>((done, fail) => {
+            const onAbort = () => fail(options.signal!.reason);
+            options.signal?.addEventListener("abort", onAbort, { once: true });
+            wake = () => {
+              options.signal?.removeEventListener("abort", onAbort);
+              done();
+            };
+          });
+          pending = false;
+          wake = undefined;
+        } else {
+          await this.sleep(Math.max(task.pollInterval ?? this.defaultPollInterval, 0), options.signal);
+        }
+        task = (await this.get(taskId)) as Task<R>;
+      }
+      if (task.result) {
+        if (task.result.primitive === "approve") assertValidApproveDecision(task.result);
+        else assertValidAskDecision(task.result);
+      }
+      return task;
+    } finally {
+      unsubscribe?.();
     }
-    if (task.result) {
-      if (task.result.primitive === "approve") assertValidApproveDecision(task.result);
-      else assertValidAskDecision(task.result);
-    }
-    return task;
   }
 
   /** Waits for a checkpointed task and interprets how it ended (rule R3). */

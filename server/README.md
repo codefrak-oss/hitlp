@@ -9,6 +9,12 @@ tools (spec section 7), with a durable SQLite task store. It implements:
 - **R4**: requests are deduplicated on `idempotencyKey` per authenticated
   client. A repeat with the same content returns the existing task and notifies
   no one; a repeat with different content is rejected.
+- **Status notifications** (spec 7.4): each status change, and always a
+  terminal one (a decision, a cancel, a TTL expiry), is sent as
+  `notifications/tasks/status` (the MCP task, never the decision record) on the
+  standalone GET stream of each `/mcp` session the owning requester
+  authenticated a request on; no other requester's session gets it. With no
+  stream open it is dropped: the requester reconciles with `tasks/get`.
 - **R5**: every `tools/call`, `tasks/get`, `tasks/result`, `tasks/list` and
   `tasks/cancel` resolves the caller from its bearer token (`authInfo.token`)
   and only shows a task to the client that created it.
