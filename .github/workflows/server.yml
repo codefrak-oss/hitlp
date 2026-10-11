@@ -31,7 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      # Built, never pushed: publishing needs a registry secret.
+      # Built, never pushed from here: GitHub's runners cannot reach the site
+      # registry. The `publish` job below pushes it from the cluster's runner.
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -44,6 +45,47 @@ jobs:
           out=$(docker run --rm hitlp-server:ci 2>&1) && exit 1
           echo "$out"
           echo "$out" | grep -q -- '--page-url'
+
+  # On main, the image for the cluster instance (deploy/k8s/base; the site
+  # overlay is lundmatt1/homelab-gitops platform/hitlp). Built on the cluster's
+  # `frakworks-images` runner scale set (codefrak-oss org, ARC) through its
+  # shared buildkitd ($BUILDKIT_HOST on the scale set), pushed to the LAN
+  # registry named by the Actions variable REGISTRY: a deployment value, not
+  # written here. That registry is plain HTTP with no auth, so the overlay
+  # pins the digest this job prints, never a tag.
+  publish:
+    needs: [test, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: frakworks-images
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      REGISTRY: ${{ vars.REGISTRY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: registry is configured
+        run: test -n "$REGISTRY" || { echo "::error::Actions variable REGISTRY is not set"; exit 1; }
+      # The runner pod has no Docker daemon; a new pod's network is admitted a
+      # second or two after it starts, hence the retries.
+      - name: builder
+        run: |
+          docker buildx create --name hitlp --driver remote "$BUILDKIT_HOST"
+          for i in 1 2 3 4 5; do docker buildx inspect --bootstrap hitlp && exit 0; sleep 2; done
+          exit 1
+      - name: build and push
+        run: |
+          docker buildx build --builder hitlp --progress=plain --push \
+            --platform linux/amd64 \
+            --file server/Dockerfile \
+            --tag "$REGISTRY/hitlp-server:main" \
+            --tag "$REGISTRY/hitlp-server:sha-${GITHUB_SHA::7}" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
+            --metadata-file /tmp/meta.json .
+          digest=$(jq -r '."containerimage.digest"' /tmp/meta.json)
+          echo "::notice title=hitlp-server image::$REGISTRY/hitlp-server@$digest (sha-${GITHUB_SHA::7}); pin this digest in the overlay"
+          echo "$digest" >> "$GITHUB_STEP_SUMMARY"
 
   kustomize:
     runs-on: ubuntu-latest
