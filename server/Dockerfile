@@ -11,12 +11,13 @@ RUN cd sdks/typescript && npm ci && npm run build
 COPY server server
 RUN cd server && npm ci && npm run build && npm prune --omit=dev
 # @codefrak/hitlp is a file: link to ../sdks/typescript, which would dangle in /app;
-# replace it with the SDK's packed package and its runtime dependencies.
+# replace it with the SDK's packed package. Its runtime deps (ajv, ajv-formats) resolve
+# from the hoisted copies server/package-lock.json pins; nothing is installed unlocked.
 RUN cd sdks/typescript && npm pack --pack-destination /tmp \
  && rm -rf /src/server/node_modules/@codefrak/hitlp \
  && mkdir -p /src/server/node_modules/@codefrak/hitlp \
- && tar -xzf /tmp/codefrak-hitlp-*.tgz --strip-components=1 -C /src/server/node_modules/@codefrak/hitlp \
- && cd /src/server/node_modules/@codefrak/hitlp && npm install --omit=dev --omit=peer --ignore-scripts --no-package-lock
+ && tar -xzf /tmp/codefrak-hitlp-*.tgz --strip-components=1 -C /src/server/node_modules/@codefrak/hitlp
+RUN cd /src/server && node -e "require.resolve('ajv', {paths: ['node_modules/@codefrak/hitlp']}); require.resolve('ajv-formats', {paths: ['node_modules/@codefrak/hitlp']})"
 
 FROM node:22-slim
 WORKDIR /app
