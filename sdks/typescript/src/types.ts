@@ -1,8 +1,8 @@
-// Types for HITLP v1.0 (draft): spec/hitlp.md sections 4-7.
+// Types for HITLP 0.2 (draft): spec/hitlp.md sections 4-7.
 // They mirror spec/schemas/*.json; the schemas stay the authority (see validate.ts).
 
 /** The spec version this SDK implements. */
-export const SPEC_VERSION = "1.0-draft";
+export const SPEC_VERSION = "0.2-draft";
 
 export type DefaultOnTimeout = "reject" | "escalate" | "cancel" | "fail";
 export type Priority = "low" | "normal" | "high" | "urgent";
@@ -16,7 +16,43 @@ export interface Envelope {
   priority?: Priority;
   requires?: { capabilities?: string[]; roles?: string[] };
   context?: { summary?: string; links?: string[]; data?: Record<string, unknown> };
-  requester?: { agent?: string; onBehalfOf?: string };
+  /** True skips the proxy's rule and model layers (spec 5.4). */
+  requiresHuman?: boolean;
+  /** What the requester says about the request: evidence, never authority (spec 5.1). */
+  asserted?: Asserted;
+  /** Filled by the server from the credentials it authenticated; never sent by a requester (spec 5.1, R8). */
+  attested?: Attested;
+}
+
+/** The requester's own merit judgment (spec 5.2). */
+export interface Recommendation {
+  verdict: "allow" | "deny" | "escalate" | "none";
+  confidence?: number;
+  by?: { requester?: string; judge?: string; model?: string; rubric?: string };
+  reasons?: string[];
+}
+
+/** One link of the chain of intent a request serves (spec 5.3). */
+export interface LineageLink {
+  kind: string;
+  claim: string;
+  source?: Record<string, unknown>;
+  by?: string;
+}
+
+export interface Asserted {
+  why?: string;
+  onBehalfOf?: { kind?: string; id?: string; [k: string]: unknown };
+  recommendation?: Recommendation;
+  lineage?: LineageLink[];
+  /** RFC 3339 date-time: when the lineage was captured. */
+  asOf?: string;
+}
+
+export interface Attested {
+  requester: string;
+  onBehalfOf?: { kind?: string; id?: string; [k: string]: unknown };
+  by: string;
 }
 
 export interface AskOption {
@@ -56,10 +92,13 @@ export interface DecisionRecord {
   outcome: Outcome;
   answer?: unknown;
   reason?: string;
-  decidedBy: { type: "human" | "policy"; id?: string; roles?: string[] };
+  /** Which proxy layer decided (spec 6): a person, a rule, the model, or a default action. */
+  decidedBy: { type: "human" | "rule" | "model" | "policy"; id?: string; roles?: string[]; confidence?: number };
   decidedAt: string;
   channel?: string;
   payloadDigest?: string;
+  attested?: Attested;
+  recommendation?: Recommendation;
   signature?: { alg: string; keyId: string; value: string };
 }
 

@@ -34,7 +34,8 @@ public final class Hello {
     public static Result hello(TerminalHuman.Prompt prompt, Consumer<String> log, Path checkpointFile)
             throws IOException, InterruptedException {
         HitlpClient client = new HitlpClient(new TerminalHuman(prompt));
-        Map<String, Object> requester = Map.of("agent", "hitlp-hello-java");
+        // The server learns who asks from the credentials (0.2 attested); the agent only says why.
+        Map<String, Object> asserted = Map.of("why", "the hello demo greets the person and asks before deploying");
 
         // Ask: the call returns a task handle at once; the human answers later.
         log.accept("[agent] Asking the human for their name (human.ask) ...");
@@ -43,7 +44,7 @@ public final class Hello {
                 .responseSchema(Map.of("type", "string", "minLength", 1))
                 .deadline(inAnHour())
                 .defaultOnTimeout("cancel")
-                .requester(requester));
+                .asserted(asserted));
         Task asked = client.waitForTerminal(client.ask(ask));
         String name = Decisions.answerOf(asked.result(), String.class);
         if (name == null || name.isEmpty()) {
@@ -60,7 +61,7 @@ public final class Hello {
                 .action("deploy.greeting")
                 .payload(payload)
                 .deadline(inAnHour())
-                .requester(requester));
+                .asserted(asserted));
         log.accept("[agent] Requesting approval for " + approve.action() + " (human.approve) ...");
         Task task = client.approve(approve);
         Files.writeString(checkpointFile, Checkpoint.forTask(task, approve, Primitive.APPROVE).serialize());

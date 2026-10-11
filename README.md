@@ -40,7 +40,7 @@ The agent talks MCP to the server and never to a human directly. The server pick
 humans, renders the request for each channel, and records the decision. Full diagram:
 [spec/hitlp.md §2](spec/hitlp.md#2-architecture).
 
-## The v1 primitives
+## The 0.2 primitives
 
 - **Ask** (`human.ask`): poses a question whose answer the server validates against a
   JSON Schema. [spec/hitlp.md#41-ask](spec/hitlp.md#41-ask)

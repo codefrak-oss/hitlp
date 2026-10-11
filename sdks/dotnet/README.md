@@ -2,7 +2,7 @@
 
 .NET SDK for HITLP, the human-in-the-loop-protocol.
 
-**Implements HITLP v1.0 (draft)**: [spec/hitlp.md](../../spec/hitlp.md).
+**Implements HITLP 0.2 (draft)**: [spec/hitlp.md](../../spec/hitlp.md).
 
 It is a client-side SDK: it builds and validates `human.ask` and `human.approve`
 requests, calls them over MCP Tasks, polls or cancels the task, and interprets the
@@ -16,7 +16,7 @@ Not yet published. From a checkout, add a project reference to
 `sdks/dotnet/src/Codefrak.Hitlp/Codefrak.Hitlp.csproj`, as
 [demos/dotnet](../../demos/dotnet/README.md) does, or `dotnet pack` it into a local feed.
 
-- .NET 8 (`net8.0`).
+- .NET 10 (`net10.0`).
 - JSON: `System.Text.Json`; requests and decision records are `JsonNode` values
   (`JsonObject`, `JsonArray`, `JsonValue`).
 - Validation: [JsonSchema.Net](https://github.com/json-everything/json-everything)

@@ -15,7 +15,8 @@ public static class HelloAgent
     public static async Task<Result> RunAsync(Func<string, string> prompt, Action<string> log, string checkpointFile)
     {
         var client = new HitlpClient(new TerminalHuman(prompt));
-        var requester = new JsonObject { ["agent"] = "hitlp-hello-dotnet" };
+        // The server learns who asks from the credentials (0.2 attested); the agent only says why.
+        var asserted = new JsonObject { ["why"] = "the hello demo greets the person and asks before deploying" };
 
         // Ask: the call returns a task handle at once; the human answers later.
         log("[agent] Asking the human for their name (human.ask) ...");
@@ -25,7 +26,7 @@ public static class HelloAgent
             ResponseSchema = new JsonObject { ["type"] = "string", ["minLength"] = 1 },
             Deadline = InAnHour(),
             DefaultOnTimeout = "cancel",
-            Requester = requester,
+            Asserted = asserted,
         });
         var asked = await client.WaitForTerminalAsync(await client.AskAsync(ask));
         var name = Decisions.AnswerOf<string>(asked.Result);
@@ -42,7 +43,7 @@ public static class HelloAgent
             Action = "deploy.greeting",
             Payload = new JsonObject { ["greeting"] = "Hello, " + name + "!", ["target"] = "hello-world" },
             Deadline = InAnHour(),
-            Requester = requester,
+            Asserted = asserted,
         });
         log("[agent] Requesting approval for " + approve.Action + " (human.approve) ...");
         var task = await client.ApproveAsync(approve);
