@@ -7,3 +7,6 @@ export * from "./server";
 export * from "./caps";
 export * from "./expiry";
 export * from "./decision-page";
+export * from "./attest";
+export * from "./records";
+export * from "./rules";

@@ -19,9 +19,12 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { isTerminal, type DecisionRecord } from "@codefrak/hitlp";
-import { tokenOf, type Authenticator } from "./auth";
+import type { Caller } from "./attest";
+import { tokenOf, type Authenticator, type HumanProfile } from "./auth";
 import { DEFAULT_CAPS, HOUR, type TtlCaps } from "./caps";
 import { expireIfDue, sweepExpired, type ExpiryOptions } from "./expiry";
+import { buildRecord, type RecordFields } from "./records";
+import { matchRule, type RuleStore } from "./rules";
 import { TerminalTaskError, type StoredTask, type TaskStore } from "./store";
 import { createHumanTask, TOOLS } from "./tools";
 
@@ -45,6 +48,10 @@ export interface HitlpServerOptions {
   onEscalate?: (task: StoredTask) => void | Promise<void>;
   /** The decision page URL of a task; when set, Approve goes URL-mode (spec 7.6). */
   decisionUrl?: (taskId: string) => string;
+  /** The humans' standing rules (proxy layer 1, spec 3.1); none when unset. */
+  rules?: RuleStore;
+  /** Resolves a rule's human, so a rule decides only for a human who meets the task's `requires`. */
+  humanProfile?: (id: string) => HumanProfile | undefined;
   /** Tells a human about a new task (the out-of-band channel, spec 7.6). */
   notify?: (task: StoredTask) => void | Promise<void>;
 }
@@ -108,14 +115,18 @@ export class HitlpServer {
 
   /**
    * Records a human's decision on a task, exactly once. The decision page
-   * (spec 7.6) calls it; clients cannot reach it over MCP. A decision after the
+   * (spec 7.6) calls it; clients cannot reach it over MCP. The record gets the
+   * request's `attested` and `recommendation` (spec 6). A decision after the
    * deadline, or on a decided task, is refused.
    */
-  decide(taskId: string, record: Omit<DecisionRecord, "requestId">): StoredTask {
+  decide(taskId: string, decision: RecordFields & Partial<Pick<DecisionRecord, "idempotencyKey" | "primitive">>): StoredTask {
+    // The task, not the caller, supplies the key, primitive, attested and recommendation.
+    const { idempotencyKey: _k, primitive: _p, attested: _a, recommendation: _r, ...fields } = decision as DecisionRecord;
     const task = this.getTask(taskId);
     if (!task) throw new Error(`no task ${taskId}`);
     if (isTerminal(task.status)) throw new TerminalTaskError(task);
-    return this.store.update(taskId, "completed", { result: { requestId: taskId, ...record } as DecisionRecord, statusMessage: "Decided." });
+    const record: DecisionRecord = buildRecord(task, fields);
+    return this.store.update(taskId, "completed", { result: record, statusMessage: "Decided." });
   }
 
   async close(): Promise<void> {
@@ -126,9 +137,16 @@ export class HitlpServer {
 
   /** R5: resolve the caller from this request's credential. */
   private caller(authInfo: AuthInfo | undefined): string {
-    const clientId = this.options.auth.resolve(tokenOf(authInfo, this.options.defaultToken));
+    return this.attestedCaller(authInfo).clientId;
+  }
+
+  /** R5 and R8: the caller, and the principal its credential carries, from this request's credential only. */
+  private attestedCaller(authInfo: AuthInfo | undefined): Caller {
+    const token = tokenOf(authInfo, this.options.defaultToken);
+    const clientId = this.options.auth.resolve(token);
     if (!clientId) throw new McpError(ErrorCode.InvalidRequest, "unauthorized");
-    return clientId;
+    const onBehalfOf = this.options.auth.onBehalfOf?.(token);
+    return onBehalfOf === undefined ? { clientId } : { clientId, onBehalfOf };
   }
 
   /** R5: a task the caller did not create is reported as not found. */
@@ -189,13 +207,14 @@ export class HitlpServer {
       const name = req.params.name;
       if (!(name in TOOLS)) throw new McpError(ErrorCode.InvalidParams, `Tool ${name} not found`);
       if (!req.params.task) throw new McpError(ErrorCode.MethodNotFound, `Tool ${name} requires task augmentation (taskSupport: 'required')`);
-      const task = await createHumanTask(store, this.caller(extra.authInfo), name, req.params.arguments ?? {}, {
+      const task = await createHumanTask(store, this.attestedCaller(extra.authInfo), name, req.params.arguments ?? {}, {
         ttl: req.params.task.ttl ?? undefined,
         pollInterval: this.options.pollInterval ?? DEFAULT_POLL_INTERVAL,
         now: this.now(),
         caps: { approve: this.options.caps?.approve ?? DEFAULT_CAPS.approve, ask: this.options.caps?.ask ?? DEFAULT_CAPS.ask },
         allowBlanketScope: this.options.allowBlanketScope ?? false,
         decisionUrl: this.options.decisionUrl,
+        rule: (t) => (this.options.rules ? matchRule(t, this.options.rules.listRules(), this.options.humanProfile) : undefined),
         notify: this.options.notify ?? (() => {}),
       });
       return { task: toMcpTask(task) } as never;
