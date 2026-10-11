@@ -13,6 +13,13 @@ export interface Config {
   approver: { credential: string; loginPath?: string; field?: string };
   /** How far ahead the R2 tests set their deadlines, in ms; default 2000. */
   expiryMs?: number;
+  /** The client ids the server authenticates `agents` as, in order (R8, R9). */
+  agentClients: [string, string];
+  /**
+   * The standing-rules surface (R9): its path on the decision page's origin, and the
+   * credential that manages `human`'s rules there (the human's own or an admin's).
+   */
+  rules: { path?: string; credential: string; human: string };
 }
 
 export const TERMINAL = ["completed", "failed", "cancelled"];
@@ -89,6 +96,22 @@ export class Context {
     if (!record) throw new Error(`task ${taskId} has no decision record: ${JSON.stringify(res)}`);
     return record;
   }
+}
+
+/** Calls the standing-rules surface on the decision page's origin `base` with a bearer credential. */
+export async function rulesCall(ctx: Context, base: string, method: string, path: string, credential: string | undefined, body?: unknown): Promise<{ status: number; json: Json | undefined }> {
+  const url = new URL((ctx.config.rules.path ?? "/rules") + path, base);
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (credential !== undefined) headers.authorization = `Bearer ${credential}`;
+  const res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  let json: Json | undefined;
+  try {
+    json = text ? JSON.parse(text) : undefined;
+  } catch {
+    json = undefined;
+  }
+  return { status: res.status, json };
 }
 
 function parseText(res: Json): Json | undefined {

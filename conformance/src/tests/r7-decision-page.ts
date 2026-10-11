@@ -5,7 +5,7 @@ import type { Json, Session } from "../client";
 
 const DECISION_URL = "io.hitlp/decisionUrl";
 
-async function urlModeApprove(ctx: Context): Promise<{ s: Session; task: Json; url: string }> {
+export async function urlModeApprove(ctx: Context): Promise<{ s: Session; task: Json; url: string }> {
   const s = await ctx.agent();
   const task = await ctx.call(s, "human.approve", ctx.approve());
   const got = await ctx.get(s, task.taskId);
@@ -22,7 +22,7 @@ async function stillWaiting(ctx: Context, s: Session, taskId: string, what: stri
 }
 
 /** The hidden fields of the page's form, as a browser would submit them. */
-function hiddenFields(html: string): URLSearchParams {
+export function hiddenFields(html: string): URLSearchParams {
   const f = new URLSearchParams();
   for (const m of html.matchAll(/<input[^>]*type="hidden"[^>]*>/g)) {
     const name = /name="([^"]*)"/.exec(m[0])?.[1];
@@ -32,7 +32,7 @@ function hiddenFields(html: string): URLSearchParams {
   return f;
 }
 
-async function login(ctx: Context, base: string, credential: string, next: string): Promise<string | undefined> {
+export async function login(ctx: Context, base: string, credential: string, next: string): Promise<string | undefined> {
   const { loginPath = "/login", field = "credential" } = ctx.config.approver;
   const body = new URLSearchParams({ [field]: credential, next });
   const res = await fetch(new URL(loginPath, base), { method: "POST", body, redirect: "manual" });
