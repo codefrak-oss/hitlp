@@ -113,6 +113,10 @@ public struct SurfaceClient: Sendable {
         guard base.hasSuffix("/surface/v1"), let url = URL(string: "\(base)/\(path)") else {
             throw SurfaceError.transport("the base URL must end in /surface/v1")
         }
+        // §7.8: HTTPS only; the credential is a bearer token and must never cross the network in clear.
+        guard url.scheme?.lowercased() == "https" else {
+            throw SurfaceError.transport("the base URL must use https")
+        }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("Bearer \(server.credential)", forHTTPHeaderField: "Authorization")

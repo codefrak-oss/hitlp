@@ -105,8 +105,15 @@ final class ClientTests: XCTestCase {
         XCTAssertTrue(SurfaceError.badRequest("answer must be a string").errorDescription!.contains("answer must be a string"))
     }
 
+    func testCleartextBaseURLIsRefused() {
+        let client = SurfaceClient(server: ServerConfig(id: "x", name: "x", baseURL: "http://mac.local:8080/surface/v1", credential: "c"), session: session)
+        XCTAssertThrowsError(try client.request("GET", "tasks")) { e in
+            XCTAssertEqual(e as? SurfaceError, .transport("the base URL must use https"))
+        }
+    }
+
     func testPickerTakesTheFirstServerThatAnswers() async {
-        let laptop = ServerConfig(id: "b", name: "Laptop", baseURL: "http://mac.local:8080/surface/v1", credential: "cred-2")
+        let laptop = ServerConfig(id: "b", name: "Laptop", baseURL: "https://mac.local:8443/surface/v1", credential: "cred-2")
         let empty = ServerConfig(id: "c", name: "", baseURL: "", credential: "")
         StubProtocol.handler = { req in
             req.url!.host == "hitlp.example" ? (401, Data(#"{"error":"no"}"#.utf8)) : (200, Data(#"{"tasks":[]}"#.utf8))

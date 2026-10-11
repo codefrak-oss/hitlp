@@ -94,8 +94,15 @@ task, fetched with the app's credential.
 ## Test against a local server
 
 Run `server/` on your Mac with a surfaces file, and point the phone at the
-Mac's address on the same network (`http://` works for a host on your local
-network; App Transport Security may still require HTTPS for other hosts).
+Mac over HTTPS. The app refuses any base URL that is not `https://`: the
+surface credential is a bearer token, and anyone who sees it on the network can
+decide tasks as you. Put TLS in front of the server, for example a reverse
+proxy (Caddy, nginx) with a certificate from `mkcert` whose root CA you install
+and trust on the phone (Settings > General > About > Certificate Trust
+Settings), or a tunnel that terminates HTTPS (Tailscale Serve, cloudflared).
+Do not add an App Transport Security exception to get around this: with one,
+the credential and every decision would cross the network unencrypted. Even
+for testing, make the `--surfaces` credential a throwaway.
 
 `surfaces.json`, one entry per surface; `human` is an approver id from
 `--approvers`, `kind` becomes the decision records' `channel`:
@@ -115,7 +122,8 @@ node dist/src/main.js --db hitlp.db --tokens tokens.json \
   --approvers approvers.json --surfaces surfaces.json
 ```
 
-In the app, set the base URL to `http://<your-mac>.local:8080/surface/v1` and
+Point the TLS proxy or tunnel at port 8080. In the app, set the base URL to
+`https://<your-proxy-or-tunnel-host>/surface/v1` and
 the credential to the one in `surfaces.json`. Create a task with any SDK or
 demo (`demos/`) and it appears in the list; decide it on the phone.
 

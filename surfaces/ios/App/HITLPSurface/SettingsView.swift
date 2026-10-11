@@ -25,6 +25,9 @@ struct SettingsView: View {
                         if !server.baseURL.isEmpty && !server.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")).hasSuffix("/surface/v1") {
                             Text("The base URL must end in /surface/v1.").foregroundStyle(.orange)
                         }
+                        if !server.baseURL.isEmpty && !server.baseURL.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("https://") {
+                            Text("The base URL must use https.").foregroundStyle(.orange)
+                        }
                     }
                 }
                 Section {
