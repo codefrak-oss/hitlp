@@ -10,3 +10,4 @@ export * from "./decision-page";
 export * from "./attest";
 export * from "./records";
 export * from "./rules";
+export * from "./routing";
