@@ -59,6 +59,57 @@ tools (spec section 7), with a durable SQLite task store. It implements:
   plugging in an OIDC- or MFA-backed `HumanAuthenticator`. Page sessions live
   in memory, so a restart asks approvers to sign in again.
 
+HITLP 0.2 (spec 3.1, 5.1–5.4, 6):
+
+- **R8 / spec 5.1**: on every `human.ask` and `human.approve`, right after the
+  bearer token is resolved and before the request is validated, deduplicated or
+  stored, the server drops any `attested` block the request carries and fills
+  its own: `{"requester": <client id>, "by": "hitlp-server"}`, plus
+  `onBehalfOf` when the `Authenticator` returns one for the token
+  (`Authenticator.onBehalfOf`; the flat `tokens.json` map carries none). Nothing
+  under `asserted` is ever copied into it. The R4 hash is taken over the request
+  without the sent `attested`, so a repeat that differs only there returns the
+  existing task, and one that differs in `asserted` is rejected; neither
+  notifies anyone.
+- **R10 / spec 5.1–5.3**: `asserted` (`why`, `onBehalfOf`, `recommendation`,
+  `lineage`, `asOf`) and `requiresHuman` are stored exactly as received, in the
+  task's `request`, which stays with the record. Nothing reads them to decide
+  but `asserted.recommendation` for the rules below. The decision page shows,
+  for an Approve and an Ask, a **Who is asking (attested by the server)** block
+  and a separate **The requester's account (asserted, unverified)** block with
+  the why, the recommendation (verdict, confidence, by, reasons) and the
+  lineage newest first, each link's kind and claim.
+- **R9 / spec 3.1, proxy layer 1**: per-human standing rules. A rule is
+  `{"human", "conditions": [{"path", "op", "value"}], "outcome", "answer"?}`;
+  `op` is `eq`, `in` (value is a list) or `gte` (a number, e.g. on
+  `asserted.recommendation.confidence`); `outcome` is `approve` or `reject`
+  (decides an Approve) or `answer` with an `answer` (decides an Ask). A path
+  must lie under `attested.` or `asserted.recommendation.`; any other path
+  (`payload`, `context`, `asserted.why`, `asserted.lineage`, `asserted.asOf`,
+  `asserted.onBehalfOf`, …) is refused when the rule is saved, with an error
+  naming it, and evaluation only ever sees those two parts of the request.
+  Rules run after dedup (R4) and the caps (R6), before the task is routed to a
+  human: the first match, oldest rule first, among rules whose human meets the
+  task's `requires`, completes the task with `decidedBy: {"type": "rule", "id":
+  <rule id>}` and no `channel`, and `notify` is not called. `requiresHuman:
+  true` skips every rule. Rules are stored in the same SQLite file (`RuleStore`,
+  `src/rules.ts`) and are active when the decision page is configured.
+
+  Rules are managed on the decision page's origin, as JSON with an
+  `Authorization: Bearer <credential>` header: `GET /rules`, `POST /rules`,
+  `GET /rules/<id>`, `DELETE /rules/<id>` (change a rule by deleting it and
+  saving a new one). An approver's credential manages that human's own rules
+  (`human` defaults to them); an admin credential from `--admins` (a list of
+  `{"credential", "id"}`) manages any approver's. An agent token is refused with
+  403, and the server refuses to start if an admin credential is also an agent
+  token or an approver credential.
+- **R11 / spec 6**: every decision record (human on the page, rule, policy at
+  the deadline) carries `attested` as the server filled it and, when the
+  request had one, `recommendation` equal to `asserted.recommendation`.
+  `decidedBy.type` is `human`, `rule` or `policy`; `model` (proxy layer 2,
+  prose rules) is reserved by the schema and not implemented. Human records
+  keep `channel: "url"`. Records are not signed.
+
 R3 is the agent's (the SDKs' checkpoints). Without a decision page,
 `HitlpServer.decide` is how a decision is recorded.
 
@@ -91,7 +142,8 @@ refused. The conformance suite (`../conformance`) runs against that URL.
 
 With `--approvers approvers.json` the decision page listens on `--page-port`
 (8080) on `--page-host` (127.0.0.1); `--page-url` is its public base URL, and an
-`https:` one marks the cookie `Secure`. Serve it behind TLS.
+`https:` one marks the cookie `Secure`. Serve it behind TLS. `--admins
+admins.json` adds rule administrators (it needs `--approvers`).
 
 `tokens.json` maps bearer tokens to client ids (`{"secret": "agent-1"}`); over
 stdio the token comes from `HITLP_TOKEN`. Without `--tokens` one client,

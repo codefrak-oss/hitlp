@@ -3,6 +3,7 @@
 // policy, and move the task to its terminal status.
 import type { DecisionRecord, DefaultOnTimeout, Outcome, TaskStatus } from "@codefrak/hitlp";
 import { isTerminal } from "@codefrak/hitlp";
+import { buildRecord } from "./records";
 import { TerminalTaskError, type StoredTask, type TaskStore } from "./store";
 
 export interface ExpiryOptions {
@@ -47,15 +48,12 @@ export function expireIfDue(store: TaskStore, task: StoredTask, now: number, opt
     }
     // escalate past its final deadline applies reject (spec 5).
     const { status, outcome, message } = terminalOf(task, requested === "escalate" ? "reject" : requested);
-    const record: DecisionRecord = {
-      requestId: task.id,
-      idempotencyKey: task.idempotencyKey,
-      primitive: task.primitive,
+    const record: DecisionRecord = buildRecord(task, {
       outcome,
       reason: message,
       decidedBy: { type: "policy", id: `defaultOnTimeout:${requested}` },
       decidedAt: new Date(now).toISOString(),
-    };
+    });
     return store.update(task.id, status, { result: record, statusMessage: message });
   } catch (e) {
     if (e instanceof TerminalTaskError) return e.task;

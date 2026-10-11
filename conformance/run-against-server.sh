@@ -12,7 +12,7 @@ PID=
 
 start() {
   node server/dist/src/main.js --db "$WORK/tasks.db" --http-port "$HTTP_PORT" \
-    --tokens conformance/fixtures/tokens.json --approvers conformance/fixtures/approvers.json \
+    --tokens conformance/fixtures/tokens.json --approvers conformance/fixtures/approvers.json --admins conformance/fixtures/admins.json \
     --page-port "$PAGE_PORT" --approve-cap-hours 1 --ask-cap-hours 2 2>>"$WORK/server.log" &
   PID=$!
   for _ in $(seq 100); do

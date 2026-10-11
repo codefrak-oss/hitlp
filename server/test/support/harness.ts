@@ -46,6 +46,8 @@ export interface Harness {
   auth: StaticTokenAuthenticator;
   notified: StoredTask[];
   clock: FakeClock;
+  /** The store's standing rules (wired into the server when started with `withRules`). */
+  rules: SqliteTaskStore;
   /** An SDK client for `token`, through McpTaskTransport, and the raw MCP client under it. */
   connect(token: string): Promise<{ hitlp: HitlpClient; transport: McpTaskTransport; client: Client }>;
   /** Closes the server and its store, keeping the database file. */
@@ -54,14 +56,16 @@ export interface Harness {
   cleanup(): void;
 }
 
-export async function startServer(dbPath?: string, options: Partial<HitlpServerOptions> & { clock?: FakeClock } = {}): Promise<Harness> {
+export async function startServer(dbPath?: string, options: Partial<HitlpServerOptions> & { clock?: FakeClock; withRules?: boolean } = {}): Promise<Harness> {
   const dir = dbPath ? undefined : mkdtempSync(join(tmpdir(), "hitlp-server-"));
   const path = dbPath ?? join(dir!, "tasks.db");
   const auth = new StaticTokenAuthenticator(TOKENS);
   const notified: StoredTask[] = [];
-  const { clock = new FakeClock(), ...rest } = options;
+  const { clock = new FakeClock(), withRules = false, ...rest } = options;
+  const store = new SqliteTaskStore(path);
   const server = new HitlpServer({
-    store: new SqliteTaskStore(path),
+    store,
+    rules: withRules ? store : undefined,
     auth,
     pollInterval: 1,
     now: clock.now,
@@ -76,6 +80,7 @@ export async function startServer(dbPath?: string, options: Partial<HitlpServerO
     auth,
     notified,
     clock,
+    rules: store,
     async connect(token) {
       const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
       await server.connect(serverSide);

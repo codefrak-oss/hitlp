@@ -16,9 +16,13 @@ import { tests as r4 } from "./tests/r4-idempotency";
 import { tests as r5 } from "./tests/r5-reauth";
 import { tests as r6 } from "./tests/r6-caps";
 import { tests as r7 } from "./tests/r7-decision-page";
+import { tests as r8 } from "./tests/r8-attested";
+import { tests as r9 } from "./tests/r9-rules";
+import { tests as r10 } from "./tests/r10-lineage";
+import { tests as r11 } from "./tests/r11-records";
 import { tests as schemaTests } from "./tests/schemas";
 
-const ALL: Test[] = [...r1, ...r2, ...r4, ...r5, ...r6, ...r7, ...schemaTests];
+const ALL: Test[] = [...r1, ...r2, ...r4, ...r5, ...r6, ...r7, ...r8, ...r9, ...r10, ...r11, ...schemaTests];
 
 async function persistOut(ctx: Context, file: string): Promise<void> {
   const s = await ctx.agent();

@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 import { validate } from "@codefrak/hitlp";
 import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { checkScope, effectiveDeadline, type TtlCaps } from "./caps";
+import { attestedFor, dropAttested, type Caller } from "./attest";
 import { requestHash } from "./idempotency";
+import { buildRecord } from "./records";
+import type { Rule } from "./rules";
 import { DuplicateKeyError, type Primitive, type StoredTask, type TaskStore } from "./store";
 
 export const TOOLS: Record<string, Primitive> = { "human.ask": "ask", "human.approve": "approve" };
@@ -21,18 +24,28 @@ export interface CreateOptions {
   allowBlanketScope: boolean;
   /** The decision page URL of a task; when set, Approve goes URL-mode (spec 7.6, R7). */
   decisionUrl?: (taskId: string) => string;
-  /** Called once per new task, never for a deduplicated repeat (R4). */
+  /**
+   * Proxy layer 1 (spec 3.1, R9): the standing rule that decides a new task, or
+   * undefined when a human must. Asked after dedup (R4) and the cap (R6), before routing.
+   */
+  rule?: (task: StoredTask) => Rule | undefined;
+  /** Called once per new task routed to a human, never for a deduplicated repeat (R4) or a rule's decision. */
   notify: (task: StoredTask) => void | Promise<void>;
 }
 
 export async function createHumanTask(
   store: TaskStore,
-  clientId: string,
+  caller: Caller,
   tool: string,
-  args: Record<string, unknown>,
+  sent: Record<string, unknown>,
   opts: CreateOptions,
 ): Promise<StoredTask> {
   const primitive = TOOLS[tool];
+  const clientId = caller.clientId;
+  // R8: the sent `attested` is dropped before anything reads the request; the
+  // request hash (R4) is taken over the request without it, so a repeat that
+  // differs only there names the same task.
+  const { request: args } = dropAttested(sent);
   const check = validate(`${primitive}.request`, args);
   if (!check.valid) throw new McpError(ErrorCode.InvalidParams, `invalid ${tool} request: ${check.errors.join("; ")}`);
   checkScope(primitive, args, opts.allowBlanketScope);
@@ -48,7 +61,8 @@ export async function createHumanTask(
       idempotencyKey: key,
       requestHash: hash,
       primitive,
-      request: args,
+      // Everything the requester sent but `attested` is kept as received; `attested` is the server's.
+      request: { ...args, attested: attestedFor(caller) },
       ttl: Math.max(0, deadlineAt - opts.now),
       pollInterval: opts.pollInterval,
       deadlineAt,
@@ -60,6 +74,18 @@ export async function createHumanTask(
       throw new McpError(ErrorCode.InvalidParams, `idempotency key ${key} was already used with different request content`);
     }
     return e.existing;
+  }
+  const rule = opts.rule?.(task);
+  if (rule) {
+    // A standing rule decides: no human is notified and the record names the rule (R11).
+    const record = buildRecord(task, {
+      outcome: rule.outcome === "answer" ? "answered" : rule.outcome === "approve" ? "approved" : "rejected",
+      ...(rule.outcome === "answer" ? { answer: structuredClone(rule.answer) } : {}),
+      reason: `Standing rule ${rule.id} of ${rule.human}.`,
+      decidedBy: { type: "rule", id: rule.id },
+      decidedAt: new Date(opts.now).toISOString(),
+    });
+    return store.update(id, "completed", { result: record, statusMessage: `Decided by rule ${rule.id}.` });
   }
   if (primitive === "approve" && opts.decisionUrl) {
     // URL-mode: the task waits in input_required until the human decides on the

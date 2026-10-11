@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildApprove, buildAsk, isApproved } from "@codefrak/hitlp";
+import { buildApprove, buildAsk, isApproved, validate } from "@codefrak/hitlp";
 import { z } from "zod";
 import { DECISION_URL_META, DecisionPage, StaticApproverAuthenticator, StaticTokenAuthenticator } from "../src";
 import { startServer, T0, TOKENS } from "./support/harness";
@@ -193,3 +193,55 @@ test("Ask on the page: requires is enforced and an answer must be one of the opt
     assert.equal((await submit(url, cookie, { csrf, option: "1" })).status, 200);
     assert.equal((await agent.hitlp.get(askId)).result?.answer, 2);
   }));
+
+test("0.2: the page shows attested as who is asking and asserted as the requester's account, lineage newest-first; the human record carries attested", async () => {
+  let base = "";
+  const humans = new StaticApproverAuthenticator(APPROVERS);
+  const h = await startServer(undefined, { decisionUrl: (id) => `${base}/decide/${id}` });
+  const page = new DecisionPage({ server: h.server, humans, agents: h.auth, secureCookie: false });
+  base = await page.listen();
+  try {
+    const agent = await h.connect("token-a");
+    const recommendation = { verdict: "allow", confidence: 0.85, by: { judge: "ops-judge" }, reasons: ["same <image>", "tests green"] };
+    const task = await agent.transport.callTool("human.approve", {
+      ...buildApprove({ deadline, action: "deploy", payload: { v: 1 }, payloadDigest: "sha256:aa" }),
+      attested: { requester: "root", by: "me" },
+      asserted: {
+        why: "retry the <nightly> deploy",
+        recommendation,
+        lineage: [
+          { kind: "ticket", claim: "issue 101 authorized" },
+          { kind: "run", claim: "run e921 started" },
+        ],
+      },
+    });
+    const cookie = await login(base, "pw-alice");
+    const url = `${base}/decide/${task.taskId}`;
+    const html = await (await fetch(url, { headers: { cookie } })).text();
+    assert.match(html, /Who is asking \(attested by the server\)/);
+    assert.match(html, /id="attested-requester">client-a</);
+    assert.doesNotMatch(html, /root/);
+    assert.match(html, /The requester's account \(asserted, unverified\)/);
+    assert.match(html, /retry the &#60;nightly&#62; deploy/);
+    assert.match(html, /<dt>Verdict<\/dt><dd>allow<\/dd>/);
+    assert.match(html, /<dt>Confidence<\/dt><dd>0.85<\/dd>/);
+    assert.match(html, /judge: ops-judge/);
+    assert.match(html, /<li>same &#60;image&#62;<\/li><li>tests green<\/li>/);
+    assert.match(html, /<ol id="lineage"><li><strong>run<\/strong>: run e921 started<\/li><li><strong>ticket<\/strong>: issue 101 authorized<\/li><\/ol>/);
+    // attested comes before asserted on the page.
+    assert.ok(html.indexOf('id="attested"') < html.indexOf('id="asserted"'));
+
+    const res = await submit(url, cookie, { csrf: field(html, "csrf"), digest: "sha256:aa", decision: "approve" });
+    assert.equal(res.status, 200);
+    const record = h.server.store.getById(task.taskId)!.result!;
+    assert.ok(validate("approve.response", record).valid);
+    assert.deepEqual(record.attested, { requester: "client-a", by: "hitlp-server" });
+    assert.deepEqual(record.recommendation, recommendation);
+    assert.equal(record.channel, "url");
+    assert.equal(record.decidedBy.type, "human");
+  } finally {
+    await page.close();
+    await h.stop();
+    h.cleanup();
+  }
+});

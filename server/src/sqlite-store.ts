@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import type { DecisionRecord, TaskStatus } from "@codefrak/hitlp";
+import type { Rule, RuleStore } from "./rules";
 import { DuplicateKeyError, TerminalTaskError, type NewTask, type StoredTask, type TaskStore, type UpdateOptions } from "./store";
 
 const MIGRATIONS = [
@@ -24,6 +25,14 @@ const MIGRATIONS = [
    ALTER TABLE tasks ADD COLUMN meta TEXT;
    UPDATE tasks SET deadline_at = CAST(strftime('%s', created_at) AS INTEGER) * 1000 + ttl;
    CREATE INDEX tasks_open_deadline ON tasks (status, deadline_at)`,
+  `CREATE TABLE rules (
+     id TEXT PRIMARY KEY,
+     human TEXT NOT NULL,
+     rule TEXT NOT NULL,
+     created_at TEXT NOT NULL,
+     seq INTEGER NOT NULL
+   );
+   CREATE INDEX rules_human ON rules (human, seq)`,
 ];
 
 const OPEN = "status NOT IN ('completed', 'failed', 'cancelled')";
@@ -69,8 +78,8 @@ function fromRow(r: Row): StoredTask {
   return t;
 }
 
-/** A TaskStore in one SQLite file (":memory:" only for tests: it is not durable). */
-export class SqliteTaskStore implements TaskStore {
+/** A TaskStore, and the standing rules' RuleStore, in one SQLite file (":memory:" only for tests: it is not durable). */
+export class SqliteTaskStore implements TaskStore, RuleStore {
   private readonly db: Database.Database;
 
   constructor(path: string) {
@@ -144,6 +153,31 @@ export class SqliteTaskStore implements TaskStore {
 
   list(clientId: string): StoredTask[] {
     return (this.db.prepare("SELECT * FROM tasks WHERE client_id = ? ORDER BY created_at, id").all(clientId) as Row[]).map(fromRow);
+  }
+
+  saveRule(rule: Rule): Rule {
+    this.db
+      .prepare("INSERT INTO rules (id, human, rule, created_at, seq) VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM rules))")
+      .run(rule.id, rule.human, JSON.stringify(rule), rule.createdAt);
+    return this.getRule(rule.id)!;
+  }
+
+  getRule(id: string): Rule | undefined {
+    const r = this.db.prepare("SELECT rule FROM rules WHERE id = ?").get(id) as { rule: string } | undefined;
+    return r && (JSON.parse(r.rule) as Rule);
+  }
+
+  deleteRule(id: string): boolean {
+    return this.db.prepare("DELETE FROM rules WHERE id = ?").run(id).changes > 0;
+  }
+
+  listRules(human?: string): Rule[] {
+    const rows = (
+      human === undefined
+        ? this.db.prepare("SELECT rule FROM rules ORDER BY seq").all()
+        : this.db.prepare("SELECT rule FROM rules WHERE human = ? ORDER BY seq").all(human)
+    ) as { rule: string }[];
+    return rows.map((r) => JSON.parse(r.rule) as Rule);
   }
 
   close(): void {
