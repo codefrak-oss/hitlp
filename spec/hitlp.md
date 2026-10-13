@@ -596,7 +596,13 @@ surface, the decision page included, MUST decide through the same checks.
 human the task is routed to, and MUST NOT push again for an R4 repeat or for a task a
 standing rule decided. A push MUST NOT carry the request's content (action, payload,
 question, context, asserted): only a title and the task id, which the surface reads
-with its own credential. A server SHOULD drop a device the push service reports gone.
+with its own credential. When a task it pushed is decided, cancelled or expires, the
+server SHOULD push once more to the same devices, naming only the task id (for APNs, a
+background push `{"aps":{"content-available":1},"taskId","event":"closed"}`), so the
+surface removes the task's alert; that push MUST NOT carry the request's content either.
+A task with `priority` `urgent` SHOULD be pushed so that it interrupts (for APNs,
+`interruption-level` `time-sensitive` and a sound); lower priorities SHOULD NOT be.
+A server SHOULD drop a device the push service reports gone.
 
 **Events.** `GET /events` is a server-sent-events stream. For each task routed to the
 human and created after the stream opened, the server sends one event with

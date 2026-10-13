@@ -124,6 +124,9 @@ export class HitlpServer {
   /** The store every status change goes through, so each one is pushed (spec 7.4). */
   private readonly tasks: TaskStore;
   private readonly listeners = new Set<(task: StoredTask) => void>();
+  private readonly closedListeners = new Set<(task: StoredTask) => void>();
+  /** Tasks announced as new and not yet terminal: only these are announced closed. */
+  private readonly announced = new Set<string>();
   private readonly timer?: NodeJS.Timeout;
   readonly now: () => number;
   private readonly expiry: ExpiryOptions;
@@ -153,7 +156,10 @@ export class HitlpServer {
           return (id: string, status: StoredTask["status"], opts?: Parameters<TaskStore["update"]>[2]) => {
             const before = target.getById(id)?.status;
             const after = target.update(id, status, opts);
-            if (after.status !== before) this.pushStatus(after);
+            if (after.status !== before) {
+              this.pushStatus(after);
+              if (isTerminal(after.status) && this.announced.delete(id)) this.emit(this.closedListeners, after, "closed-task");
+            }
             return after;
           };
         }
@@ -259,14 +265,28 @@ export class HitlpServer {
     return () => void this.listeners.delete(listener);
   }
 
-  private async announce(task: StoredTask): Promise<void> {
-    for (const l of this.listeners) {
+  /**
+   * Calls `listener` once with each task announced by onNewTask when it leaves the
+   * open state (decided, cancelled, expired); returns the unsubscribe.
+   */
+  onTaskClosed(listener: (task: StoredTask) => void): () => void {
+    this.closedListeners.add(listener);
+    return () => void this.closedListeners.delete(listener);
+  }
+
+  private emit(listeners: Set<(task: StoredTask) => void>, task: StoredTask, what: string): void {
+    for (const l of listeners) {
       try {
         l(task);
       } catch (e) {
-        console.error(`hitlp: a new-task listener failed: ${(e as Error).message}`);
+        console.error(`hitlp: a ${what} listener failed: ${(e as Error).message}`);
       }
     }
+  }
+
+  private async announce(task: StoredTask): Promise<void> {
+    if (!isTerminal(task.status)) this.announced.add(task.id);
+    this.emit(this.listeners, task, "new-task");
     await this.options.notify?.(task);
   }
 

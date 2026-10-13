@@ -164,7 +164,14 @@ Push: with `--apns-key <AuthKey.p8> --apns-key-id <id> --apns-team-id <id>
 environment) each new task is pushed once to every device of every human it is
 routed to, never for an R4 repeat or a rule's decision. The alert carries a
 title and the task id, never the request's content; the app fetches the task
-with its own credential. A device APNs answers 410 for is dropped. Without
+with its own credential. A task with `priority: "urgent"` is pushed with
+`interruption-level: time-sensitive` (and a sound), so it breaks through Focus;
+other priorities get the plain alert. When a pushed task is decided, cancelled
+or expires, the same devices get one background push
+(`apns-push-type: background`, `{"aps":{"content-available":1},"taskId":…,"event":"closed"}`)
+so the app removes its alert. Which tasks were pushed is kept in memory: a task
+pushed before a restart gets no closed push. A device APNs answers 410 for, on
+either push, is dropped. Without
 the flags the server logs once and pushes nothing. Other push services plug in
 as a `PushSender` (`src/push.ts`).
 
