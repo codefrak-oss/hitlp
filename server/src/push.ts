@@ -1,6 +1,7 @@
-// Device push for new tasks (spec 7.8): one push per registered device of each
-// human a new task is routed to. A push carries the task id and a title, never
-// the payload: the surface fetches the task over its own credential. APNs is
+// Device push for tasks (spec 7.8): one alert per registered device of each
+// human a new task is routed to, and one background push when that task leaves
+// the open state so the device clears the alert. A push carries the task id
+// (and, for an alert, a title), never the payload: the surface fetches the task over its own credential. APNs is
 // spoken over node:http2 with an ES256 provider token signed by node:crypto.
 import { createPrivateKey, sign, type KeyObject } from "node:crypto";
 import { connect, type ClientHttp2Session } from "node:http2";
@@ -12,8 +13,11 @@ import type { Device, StoredTask, SurfaceStore } from "./store";
 /** What became of one push: delivered, the device is gone (drop it), or it failed. */
 export type PushResult = "sent" | "gone" | "failed";
 
+/** Why a push goes out: a new task (an alert) or a pushed task no longer open (clear its alert). */
+export type PushKind = "new" | "closed";
+
 export interface PushSender {
-  send(device: Device, task: StoredTask): Promise<PushResult>;
+  send(device: Device, task: StoredTask, kind: PushKind): Promise<PushResult>;
 }
 
 /** The alert a push shows: a title by primitive and the task id, no request content. */
@@ -49,6 +53,25 @@ export interface ApnsConfig {
   bundleId: string;
   /** Send to api.sandbox.push.apple.com when the device names no environment. */
   sandbox?: boolean;
+}
+
+/**
+ * The APNs headers and body for one push. A new task is an alert; an urgent one
+ * is time-sensitive so it breaks through Focus. A closed task is a silent
+ * background push naming only the task id, so the app removes its alert.
+ */
+export function apnsPush(task: StoredTask, kind: PushKind): { headers: Record<string, string>; payload: Record<string, unknown> } {
+  const collapse = { "apns-collapse-id": task.id.slice(0, 64) };
+  if (kind === "closed") {
+    return {
+      headers: { "apns-push-type": "background", "apns-priority": "5", ...collapse },
+      payload: { aps: { "content-available": 1 }, taskId: task.id, event: "closed" },
+    };
+  }
+  const { title, body, taskId } = pushContent(task);
+  const aps: Record<string, unknown> = { alert: { title, body }, sound: "default", "thread-id": "hitlp" };
+  if (task.request.priority === "urgent") aps["interruption-level"] = "time-sensitive";
+  return { headers: { "apns-push-type": "alert", "apns-priority": "10", ...collapse }, payload: { aps, taskId } };
 }
 
 const APNS_HOST = { production: "https://api.push.apple.com", sandbox: "https://api.sandbox.push.apple.com" };
@@ -93,12 +116,12 @@ export class ApnsPushSender implements PushSender {
     return s;
   }
 
-  async send(device: Device, task: StoredTask): Promise<PushResult> {
+  async send(device: Device, task: StoredTask, kind: PushKind = "new"): Promise<PushResult> {
     if (device.platform !== "apns") return "failed";
     const env = device.environment ?? (this.config.sandbox ? "sandbox" : "production");
     const host = env === "sandbox" ? APNS_HOST.sandbox : APNS_HOST.production;
-    const { title, body, taskId } = pushContent(task);
-    const payload = JSON.stringify({ aps: { alert: { title, body }, sound: "default", "thread-id": "hitlp" }, taskId });
+    const push = apnsPush(task, kind);
+    const payload = JSON.stringify(push.payload);
     return new Promise<PushResult>((resolve) => {
       try {
         const req = this.session(host).request({
@@ -106,9 +129,7 @@ export class ApnsPushSender implements PushSender {
           ":path": `/3/device/${encodeURIComponent(device.token)}`,
           authorization: `bearer ${this.jwt()}`,
           "apns-topic": this.config.bundleId,
-          "apns-push-type": "alert",
-          "apns-priority": "10",
-          "apns-collapse-id": taskId.slice(0, 64),
+          ...push.headers,
           "content-type": "application/json",
         });
         let status = 0;
@@ -136,19 +157,27 @@ export function pushSenderFor(config: Partial<ApnsConfig>): PushSender {
 }
 
 /**
- * Pushes each new task to every device of every human it is routed to, once:
- * the server announces only fresh tasks, never an R4 repeat. A device whose
- * surface was revoked gets nothing; one APNs reports gone is dropped.
+ * Pushes each new task to every device of every human it is routed to, once,
+ * and once more to the same devices when it is decided, cancelled or expires:
+ * the server announces only fresh tasks, never an R4 repeat or a rule's
+ * decision. A device whose surface was revoked gets nothing; one APNs reports
+ * gone is dropped.
  */
 export function wirePush(server: HitlpServer, surfaces: SurfaceAuthenticator, store: SurfaceStore, sender: PushSender): () => void {
-  return server.onNewTask((task) => {
+  const push = (kind: PushKind) => (task: StoredTask) => {
     for (const device of store.listDevices()) {
       const surface = surfaces.surface(device.surfaceId);
       if (!surface || surface.human.id !== device.human || !routedTo(task, surface.human)) continue;
-      void sender.send(device, task).then(
+      void sender.send(device, task, kind).then(
         (r) => void (r === "gone" && store.deleteDevice(device.surfaceId, device.id)),
         () => {},
       );
     }
-  });
+  };
+  const offNew = server.onNewTask(push("new"));
+  const offClosed = server.onTaskClosed(push("closed"));
+  return () => {
+    offNew();
+    offClosed();
+  };
 }

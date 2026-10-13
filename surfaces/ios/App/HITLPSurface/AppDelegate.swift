@@ -5,7 +5,8 @@ import HITLPSurfaceKit
 /// Push: asks for permission and registers on launch, puts the APNs token on
 /// every configured server (`PUT /devices/{deviceId}`), and opens the task a
 /// tapped notification names. A notification carries only a title and the
-/// task id; the task itself is fetched with the app's credential.
+/// task id; the task itself is fetched with the app's credential. A background
+/// push naming a task that is no longer open removes that task's alert.
 final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         let center = UNUserNotificationCenter.current()
@@ -24,6 +25,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         Task { @MainActor in AppModel.shared.pushError = error.localizedDescription }
+    }
+
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
+        guard let id = PushPayload.closedTaskId(from: userInfo) else { return .noData }
+        let center = UNUserNotificationCenter.current()
+        let ids = await center.deliveredNotifications()
+            .filter { PushPayload.taskId(from: $0.request.content.userInfo) == id }
+            .map(\.request.identifier)
+        guard !ids.isEmpty else { return .noData }
+        center.removeDeliveredNotifications(withIdentifiers: ids)
+        return .newData
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {

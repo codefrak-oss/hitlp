@@ -24,7 +24,10 @@ Bearer surface credential.
   option shows its pattern or reason, prefilled. The choice goes in the same
   decision. With no options offered, the sheet is as before.
 - Registers for push and opens the task a notification names; the
-  notification carries only a title and the task id.
+  notification carries only a title and the task id. An urgent task's alert is
+  time-sensitive, so it breaks through Focus. When the task is decided,
+  cancelled or expires, the server's background push (`event: "closed"`)
+  removes its alert from Notification Center.
 - Holds two servers (say, the cluster instance and the laptop instance), each
   with its own credential, in the Keychain, and uses the first, in order, whose
   `GET /tasks` answers 200.
@@ -58,7 +61,9 @@ push).
    - **Push Notifications**: the capability is already declared
      (`HITLPSurface.entitlements`); if Xcode lists it as missing, add it with
      **+ Capability → Push Notifications**. Also keep **Background Modes →
-     Remote notifications**.
+     Remote notifications**: the closed-task push needs it. **Time Sensitive
+     Notifications** is declared there too, for urgent tasks; without it iOS
+     shows them as ordinary alerts.
 3. Connect the iPhone by USB, unlock it and trust the Mac. On iOS 16 and later
    turn on **Settings → Privacy & Security → Developer Mode** and restart when
    asked.
