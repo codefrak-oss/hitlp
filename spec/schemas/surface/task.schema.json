@@ -9,7 +9,8 @@
     "status",
     "createdAt",
     "deadline",
-    "requiresHuman"
+    "requiresHuman",
+    "priority"
   ],
   "properties": {
     "id": {
@@ -44,6 +45,15 @@
     },
     "requiresHuman": {
       "type": "boolean"
+    },
+    "priority": {
+      "enum": [
+        "low",
+        "normal",
+        "high",
+        "urgent"
+      ],
+      "description": "The request's priority (spec 4), normal when it named none; a surface interrupts for urgent, as push does (7.8)."
     },
     "attested": {
       "type": "object",

@@ -69,6 +69,11 @@ export const tests: Test[] = [
       ctx.schemas.assert("surface/task", view.json, "the task view");
       assert(view.json!.attested?.source === "server" && view.json!.attested?.requester === ctx.config.agentClients[0], "the view's attested is not the server's, naming the requester");
       assert(view.json!.asserted?.source === "requester" && view.json!.asserted?.why === "conformance S", "the view's asserted is not the requester's as sent");
+      assert(view.json!.priority === "normal", `a request with no priority shows as ${JSON.stringify(view.json!.priority)}, expected "normal" (7.8)`);
+      const urgent = await ctx.call(s, "human.approve", ctx.approve({ priority: "urgent", asserted: { why: "conformance S urgent" } }));
+      const urgentView = await call(base, `/tasks/${urgent.taskId}`, credential);
+      ctx.schemas.assert("surface/task", urgentView.json, "the urgent task's view");
+      assert(urgentView.json!.priority === "urgent", `an urgent request shows as ${JSON.stringify(urgentView.json!.priority)}, expected "urgent" (7.8)`);
       const decided = await call(base, `/tasks/${task.taskId}/decision`, credential, "POST", { outcome: "approve", reason: "conformance", payloadDigest: view.json!.payloadDigest });
       assert(decided.status === 200, `the decision answered ${decided.status}: ${JSON.stringify(decided.json)}`);
       ctx.schemas.assert("decision-record", decided.json, "the surface's decision record");

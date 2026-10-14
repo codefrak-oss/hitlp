@@ -16,7 +16,8 @@ the server.
   satisfy it; to anyone else it is not listed and not found (`404`).
 - **The task view** labels `attested` as the server's and `asserted` as the
   requester's, lineage newest first, and carries the payload as received, the
-  effective deadline and `requiresHuman`.
+  effective deadline, `requiresHuman` and `priority` (`normal` when the request named
+  none), so a surface can interrupt for an urgent task as push does.
 - **Deciding**: once, through the same checks on every surface (the decision page's
   included); an Approve is bound to its `payloadDigest`, an Ask's answer is validated
   against `responseSchema`; the record's `channel` names the surface's kind.

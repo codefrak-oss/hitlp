@@ -566,7 +566,9 @@ unrouted task, `409` for a task already terminal or a stale `payloadDigest`.
 `asserted` carries `"source": "requester"` beside what the requester sent, with
 `lineage` reordered newest first for display (5.3). The view carries `id`,
 `primitive`, `status`, `createdAt`, `deadline` (the effective deadline, after the cap
-and any escalation, 5 and R6), `requiresHuman` (5.4, `false` when absent), `context`
+and any escalation, 5 and R6), `requiresHuman` (5.4, `false` when absent), `priority`
+(4, the request's, `normal` when absent: a surface uses it to decide whether to interrupt, as
+push does), `context`
 and `requires` as received; for an Approve `action`, `payload` exactly as received and
 `payloadDigest` (the request's, or the server's own over the payload); for an Ask
 `question`, `responseSchema` and `options`; `teach` (5.5) as received, when the
