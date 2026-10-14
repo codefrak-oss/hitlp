@@ -60,7 +60,8 @@ export function bearerOf(req: IncomingMessage): string | undefined {
 /**
  * A task as a surface shows it (spec 7.8): `attested` labelled the server's,
  * `asserted` labelled the requester's with lineage newest first, the payload as
- * received, the effective deadline, `requiresHuman` and the status.
+ * received, the effective deadline, `requiresHuman`, `priority` (`normal` when the
+ * request named none) and the status.
  */
 export function surfaceView(task: StoredTask): Record<string, unknown> {
   const r = task.request;
@@ -71,6 +72,7 @@ export function surfaceView(task: StoredTask): Record<string, unknown> {
     createdAt: task.createdAt,
     deadline: new Date(task.finalDeadlineAt ?? task.deadlineAt).toISOString(),
     requiresHuman: r.requiresHuman === true,
+    priority: typeof r.priority === "string" ? r.priority : "normal",
   };
   if (task.statusMessage !== undefined) view.statusMessage = task.statusMessage;
   const attested = r.attested as Attested | undefined;

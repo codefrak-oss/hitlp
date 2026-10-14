@@ -5,6 +5,7 @@
   "createdAt": "2026-10-08T18:00:02Z",
   "deadline": "2026-10-08T19:00:00Z",
   "requiresHuman": false,
+  "priority": "high",
   "attested": {
     "source": "server",
     "requester": "release-orchestrator",
