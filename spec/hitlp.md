@@ -608,7 +608,11 @@ A server SHOULD drop a device the push service reports gone.
 
 **Events.** `GET /events` is a server-sent-events stream. For each task routed to the
 human and created after the stream opened, the server sends one event with
-`event: task`, `id` the task id and `data` the task view. The server SHOULD send a
+`event: task`, `id` the task id and `data` the task view. When such a task ends
+(decided on any surface, cancelled, or past its deadline), the server sends one event
+with `event: closed`, `id` the task id and `data` the task view, so that every surface
+can take the task down; a surface that missed it (its stream was down) MUST treat a
+terminal status from `GET /tasks/{id}` or a resync of `GET /tasks` the same way. The server SHOULD send a
 comment line at least every 30 s to keep intermediaries from closing the stream, and
 MUST re-resolve the credential before each event, ending the stream when it is no
 longer valid.
