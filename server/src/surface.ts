@@ -234,9 +234,11 @@ export class SurfaceApi {
   }
 
   /**
-   * The new-task stream: one `task` event per task routed to the caller's human,
-   * created after the stream opened. The credential is resolved again before
-   * every event, so a revoked surface's stream ends.
+   * The task stream: one `task` event per task routed to the caller's human,
+   * created after the stream opened, and one `closed` event when such a task
+   * ends (decided on any surface, cancelled or expired), so every surface can
+   * take it down. The credential is resolved again before every event, so a
+   * revoked surface's stream ends.
    */
   private events(req: IncomingMessage, res: ServerResponse): void {
     const credential = bearerOf(req);
@@ -248,6 +250,7 @@ export class SurfaceApi {
       if (ended) return;
       ended = true;
       unsubscribe();
+      unsubscribeClosed();
       clearInterval(keepAlive);
       this.streams.delete(res);
       res.end();
@@ -257,6 +260,12 @@ export class SurfaceApi {
       if (!who) return end();
       if (!routedTo(task, who.human) || isTerminal(task.status)) return;
       res.write(`event: task\nid: ${task.id}\ndata: ${JSON.stringify(surfaceView(task))}\n\n`);
+    });
+    const unsubscribeClosed = this.options.server.onTaskClosed((task) => {
+      const who = this.options.surfaces.resolve(credential);
+      if (!who) return end();
+      if (!routedTo(task, who.human)) return;
+      res.write(`event: closed\nid: ${task.id}\ndata: ${JSON.stringify(surfaceView(task))}\n\n`);
     });
     const keepAlive = setInterval(() => res.write(": keep-alive\n\n"), this.options.keepAliveMs ?? 25_000);
     keepAlive.unref();

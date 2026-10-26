@@ -6,8 +6,8 @@ import { startSurface } from "./support/surface";
 
 const deadline = new Date(T0 + 3_600_000).toISOString();
 
-/** Reads server-sent events until `count` `task` events arrived or `ms` passed. */
-async function taskEvents(res: Response, count: number, ms: number): Promise<{ id: string; data: Record<string, unknown> }[]> {
+/** Reads server-sent events until `count` events named `name` arrived or `ms` passed. */
+async function taskEvents(res: Response, count: number, ms: number, name = "task"): Promise<{ id: string; data: Record<string, unknown> }[]> {
   const reader = res.body!.getReader();
   const events: { id: string; data: Record<string, unknown> }[] = [];
   let buf = "";
@@ -21,7 +21,7 @@ async function taskEvents(res: Response, count: number, ms: number): Promise<{ i
       while ((i = buf.indexOf("\n\n")) >= 0) {
         const block = buf.slice(0, i);
         buf = buf.slice(i + 2);
-        if (!/^event: task$/m.test(block)) continue;
+        if (!new RegExp(`^event: ${name}$`, "m").test(block)) continue;
         events.push({ id: /^id: (.*)$/m.exec(block)![1], data: JSON.parse(/^data: (.*)$/m.exec(block)![1]) });
       }
     }
@@ -61,6 +61,25 @@ test("surface events: an R4 repeat is not announced again", async () => {
     await agent.hitlp.approve(req);
     await agent.hitlp.approve(req);
     assert.equal((await taskEvents(stream, 2, 500)).length, 1);
+  } finally {
+    await s.stop();
+  }
+});
+
+test("surface events: a task decided on one surface is announced closed on the human's other surfaces", async () => {
+  const s = await startSurface();
+  try {
+    const desktop = await s.call("sf-alice-desktop", "/events");
+    const agent = await s.h.connect("token-a");
+    const task = await agent.hitlp.approve(buildApprove({ deadline, action: "deploy", payload: { v: 1 }, payloadDigest: "sha256:aa" }));
+    const closed = taskEvents(desktop, 1, 3000, "closed");
+    await new Promise((r) => setTimeout(r, 100));
+    const res = await s.call("sf-alice-phone", `/tasks/${task.taskId}/decision`, { method: "POST", body: { outcome: "approve", payloadDigest: "sha256:aa" } });
+    assert.equal(res.status, 200);
+    const events = await closed;
+    assert.equal(events.length, 1);
+    assert.equal(events[0].id, task.taskId);
+    assert.equal(events[0].data.status, "completed");
   } finally {
     await s.stop();
   }
